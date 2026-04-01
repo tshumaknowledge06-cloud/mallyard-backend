@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 
+from app.db.models.user import User
 from app.db.session import get_db
 from app.db.models.listing import Listing
 from app.db.models.merchant import Merchant
