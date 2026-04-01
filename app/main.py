@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from app.db.init_db import init_db
+from fastapi import Request
 
 # 🔹 Import routers
 from app.api.routes import auth
