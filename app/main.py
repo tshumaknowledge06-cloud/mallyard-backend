@@ -34,6 +34,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import JSONResponse
+from app.api.routes import seed
 
 app = FastAPI(title="The Mallyard API")
 
@@ -104,7 +105,7 @@ app.include_router(trending.router)
 app.include_router(admin_analytics.router)
 app.include_router(cart.router)
 app.include_router(review.router)
-
+app.include_router(seed.router, prefix="/admin", tags=["Admin"])
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request, exc):
