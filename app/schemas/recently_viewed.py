@@ -6,7 +6,7 @@ from typing import Optional, List
 
 class RecentlyViewedOut(BaseModel):
     id: int
-    viewed_at: datetime
+    viewed_at: Optional[datetime] = None  
     listing: ListingOut
 
     # ✅ MEDIA SUPPORT
