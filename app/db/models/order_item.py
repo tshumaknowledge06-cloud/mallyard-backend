@@ -25,6 +25,7 @@ class OrderItem(Base):
 
     # ✅ PRICE SNAPSHOT AT PURCHASE TIME
     price = Column(Float, nullable=False)
+    total_price = Column(Float)  
 
     order = relationship("Order", back_populates="items")
     listing = relationship("Listing")
