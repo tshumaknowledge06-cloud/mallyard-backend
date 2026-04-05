@@ -117,7 +117,7 @@ def create_order(
             send_email(
                 to=seller_user.email,
                 subject="New Order Pending Confirmation",
-                body=f"New order received. Order ID: {order.id}. Kindly access your dasboard to review the order details"
+                body=f"New order received. Order ID: {order.id}. Kindly access your dasboard to review the order details. The Mallyard."
             )
         except Exception:
             pass
