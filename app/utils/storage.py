@@ -1,12 +1,10 @@
 import requests
 import os
 import uuid
-from fastapi import UploadFile
 
-
-def upload_file(file: UploadFile):
+def upload_file_to_supabase(file):
     file_id = str(uuid.uuid4())
-    filename = f"{file_id}-{file.filename.replace(' ', '_')}"
+    filename = f"{file_id}-{file.filename}"
 
     url = f"{os.getenv('SUPABASE_URL')}/storage/v1/object/{os.getenv('SUPABASE_BUCKET')}/{filename}"
 

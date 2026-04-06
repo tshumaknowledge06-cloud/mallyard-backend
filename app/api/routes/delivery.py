@@ -11,7 +11,7 @@ from app.schemas.delivery_partner import (
 )
 from app.api.deps import get_current_user
 from app.db.models.user import User
-from app.utils.file_upload import save_upload_file
+from app.utils.file_upload import upload_file
 
 router = APIRouter(
     prefix="/delivery",
@@ -195,9 +195,10 @@ def upload_profile_image(
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
 
-    filename = save_upload_file(file, "uploads/delivery", f"profile_{partner.id}")
+    # 🔥 CLOUD UPLOAD
+    file_url = upload_file(file)
 
-    partner.profile_image_url = f"/uploads/delivery/{filename}"
+    partner.profile_image_url = file_url
 
     db.commit()
     db.refresh(partner)
@@ -227,9 +228,10 @@ def upload_vehicle_image(
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
 
-    filename = save_upload_file(file, "uploads/delivery", f"vehicle_{partner.id}")
+    # 🔥 CLOUD UPLOAD
+    file_url = upload_file(file)
 
-    partner.vehicle_image_url = f"/uploads/delivery/{filename}"
+    partner.vehicle_image_url = file_url
 
     db.commit()
     db.refresh(partner)

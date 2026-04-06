@@ -9,9 +9,7 @@ from app.api.deps import get_current_user, require_role
 from app.db.models.listing import Listing
 from app.db.models.audit_log import AuditLog
 from fastapi import UploadFile, File
-import os
-import shutil
-from app.utils.file_upload import save_upload_file
+from app.utils.file_upload import upload_file
 
 router = APIRouter(
     prefix="/merchants",
@@ -308,9 +306,10 @@ def upload_merchant_logo(
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
 
-    filename = save_upload_file(file, "uploads/logos", f"merchant_{merchant.id}")
+    # 🔥 CLOUD UPLOAD
+    file_url = upload_file(file)
 
-    merchant.logo_url = f"/uploads/logos/{filename}"
+    merchant.logo_url = file_url
 
     db.commit()
     db.refresh(merchant)

@@ -12,11 +12,7 @@ from app.db.models.subcategory import SubCategory
 from app.schemas.listing import ListingCreate, ListingOut, ListingCompareOut
 from app.api.deps import get_current_user
 from fastapi import UploadFile, File
-from app.utils.file_upload import save_upload_file
-import os
-import shutil
-import uuid
-
+from app.utils.file_upload import upload_file
 
 router = APIRouter(
     tags=["Listings"]
@@ -50,7 +46,7 @@ def create_listing(
         name=listing_in.name,
         description=listing_in.description,
         price=listing_in.price,
-        currency=listing_in.currency,   # NEW
+        currency=listing_in.currency,
         stock_quantity=listing_in.stock_quantity,
         service_duration_minutes=listing_in.service_duration_minutes,
     )
@@ -123,25 +119,8 @@ def delete_listing(
     if not merchant or merchant.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # ✅ Delete images from storage
-    if listing.image_urls:
-        for img in listing.image_urls:
-            try:
-                path = img.replace("/uploads/", "uploads/")
-                if os.path.exists(path):
-                    os.remove(path)
-            except:
-                pass
-
-    # ✅ Delete video
-    if listing.video_url:
-        try:
-            path = listing.video_url.replace("/uploads/", "uploads/")
-            if os.path.exists(path):
-                os.remove(path)
-        except:
-            pass
-
+    # ✅ Delete listing from database only
+    # Files are in cloud storage - no local deletion needed
     db.delete(listing)
     db.commit()
 
@@ -168,7 +147,6 @@ def get_my_listings(
     return listings
 
 
-
 # -------------------------------------------------
 # Public Marketplace
 # -------------------------------------------------
@@ -183,7 +161,7 @@ def get_marketplace_listings(
     max_price: float | None = None,
     listing_type: str | None = None,
     search: str | None = None,
-    location: str | None = Query(None),  # ✅ NEW
+    location: str | None = Query(None),
     db: Session = Depends(get_db)
 ):
 
@@ -218,7 +196,7 @@ def get_marketplace_listings(
     if search:
         query = query.filter(Listing.name.ilike(f"%{search}%"))
 
-    # ✅ LOCATION FILTER (NEW — NON-DESTRUCTIVE)
+    # ✅ LOCATION FILTER
     if location:
         query = query.filter(
             Merchant.location.ilike(f"%{location}%")
@@ -227,6 +205,7 @@ def get_marketplace_listings(
     listings = query.offset(skip).limit(page_size).all()
 
     return listings
+
 
 # ---------------------------------------------------
 # Get comparable listings
@@ -289,6 +268,7 @@ def get_comparable_listings(
         )
 
     return comparables
+
 
 # ---------------------------------------------------
 # Compare selected listings
@@ -355,6 +335,10 @@ def get_listing_detail(
     return listing
 
 
+# -------------------------------------------------
+# Upload Listing Images (CLOUD STORAGE)
+# -------------------------------------------------
+
 @router.post("/{listing_id}/upload-images")
 def upload_listing_images(
     listing_id: int,
@@ -377,7 +361,7 @@ def upload_listing_images(
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    # ✅ Ownership check (MATCH VIDEO ENDPOINT)
+    # ✅ Ownership check
     merchant = db.query(Merchant).filter(
         Merchant.id == listing.merchant_id
     ).first()
@@ -387,10 +371,6 @@ def upload_listing_images(
             status_code=403,
             detail="Not authorized"
         )
-
-    # ✅ Ensure folder exists
-    upload_dir = "uploads/listings"
-    os.makedirs(upload_dir, exist_ok=True)
 
     new_images = []
 
@@ -412,15 +392,9 @@ def upload_listing_images(
 
         file.file.seek(0)
 
-        # ✅ Unique filename
-        filename = f"{uuid.uuid4().hex}_{file.filename}"
-        file_path = os.path.join(upload_dir, filename)
-
-        # ✅ Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        new_images.append(f"/{file_path}")
+        # 🔥 CLOUD UPLOAD (no local file saving)
+        file_url = upload_file(file)
+        new_images.append(file_url)
 
     # 🔥 APPEND (NOT REPLACE)
     existing = listing.image_urls or []
@@ -433,6 +407,7 @@ def upload_listing_images(
         "message": "Images uploaded successfully",
         "image_urls": listing.image_urls
     }
+
 
 # -------------------------------------------------
 # Delete Listing Image
@@ -460,15 +435,7 @@ def delete_listing_image(
     if not listing.image_urls or image_url not in listing.image_urls:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # ✅ Remove from storage
-    try:
-        path = image_url.replace("/uploads/", "uploads/")
-        if os.path.exists(path):
-            os.remove(path)
-    except:
-        pass
-
-    # ✅ Remove from DB
+    # ✅ Remove from DB only (files in cloud storage)
     listing.image_urls = [
         img for img in listing.image_urls if img != image_url
     ]
@@ -482,6 +449,10 @@ def delete_listing_image(
     }
 
 
+# -------------------------------------------------
+# Upload Listing Video (CLOUD STORAGE)
+# -------------------------------------------------
+
 @router.post("/{listing_id}/upload-video")
 def upload_listing_video(
     listing_id: int,
@@ -489,7 +460,6 @@ def upload_listing_video(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    import os
 
     # ✅ Allowed types
     ALLOWED_TYPES = ["video/mp4", "video/webm", "video/quicktime"]
@@ -533,25 +503,8 @@ def upload_listing_video(
             detail="Not authorized"
         )
 
-    # ✅ Save video using helper
-    from app.utils.file_upload import save_upload_file
-
-    filename = save_upload_file(
-        file,
-        "uploads/listings",
-        f"video_{listing_id}"
-    )
-
-    video_url = f"/uploads/listings/{filename}"
-
-    # ✅ Replace old video (optional cleanup)
-    if listing.video_url:
-        try:
-            old_path = listing.video_url.replace("/uploads/", "uploads/")
-            if os.path.exists(old_path):
-                os.remove(old_path)
-        except:
-            pass  # fail silently (safe for MVP)
+    # 🔥 CLOUD UPLOAD (no local file saving)
+    video_url = upload_file(file)
 
     listing.video_url = video_url
 
@@ -589,13 +542,7 @@ def delete_listing_video(
     if not listing.video_url:
         raise HTTPException(status_code=404, detail="No video to delete")
 
-    try:
-        path = listing.video_url.replace("/uploads/", "uploads/")
-        if os.path.exists(path):
-            os.remove(path)
-    except:
-        pass
-
+    # ✅ Remove from DB only (files in cloud storage)
     listing.video_url = None
 
     db.commit()
