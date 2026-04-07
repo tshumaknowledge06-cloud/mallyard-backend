@@ -107,11 +107,13 @@ def delete_listing(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+    # 1. Get listing
     listing = db.query(Listing).filter(Listing.id == listing_id).first()
 
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
+    # 2. Check ownership
     merchant = db.query(Merchant).filter(
         Merchant.id == listing.merchant_id
     ).first()
@@ -119,13 +121,40 @@ def delete_listing(
     if not merchant or merchant.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # ✅ Delete listing from database only
-    # Files are in cloud storage - no local deletion needed
+    # 3. Get related order IDs
+    order_ids = [o.id for o in listing.orders]
+
+    if order_ids:
+        # 4. Get delivery requests linked to orders
+        delivery_requests = db.query(DeliveryRequest).filter(
+            DeliveryRequest.order_id.in_(order_ids)
+        ).all()
+
+        delivery_request_ids = [dr.id for dr in delivery_requests]
+
+        if delivery_request_ids:
+            # 5. Delete delivery matches FIRST (deepest)
+            db.query(DeliveryMatch).filter(
+                DeliveryMatch.delivery_request_id.in_(delivery_request_ids)
+            ).delete(synchronize_session=False)
+
+            # 6. Delete delivery requests
+            db.query(DeliveryRequest).filter(
+                DeliveryRequest.id.in_(delivery_request_ids)
+            ).delete(synchronize_session=False)
+
+        # 7. Delete orders
+        db.query(Order).filter(
+            Order.id.in_(order_ids)
+        ).delete(synchronize_session=False)
+
+    # 8. Delete listing
     db.delete(listing)
+
+    # 9. Commit once
     db.commit()
 
     return {"message": "Listing deleted successfully"}
-
 
 @router.get("/mine", response_model=List[ListingOut])
 def get_my_listings(
