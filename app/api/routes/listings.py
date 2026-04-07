@@ -13,6 +13,9 @@ from app.schemas.listing import ListingCreate, ListingOut, ListingCompareOut
 from app.api.deps import get_current_user
 from fastapi import UploadFile, File
 from app.utils.file_upload import upload_file
+from app.models.order import Order
+from app.models.delivery_request import DeliveryRequest
+from app.models.delivery_match import DeliveryMatch
 
 router = APIRouter(
     tags=["Listings"]
