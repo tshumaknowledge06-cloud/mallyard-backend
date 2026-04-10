@@ -6,7 +6,7 @@ class UserCreate(BaseModel):
     email: EmailStr
 
     password: constr(
-        min_length=8,
+        min_length=5,
         max_length=128
     )
 
@@ -36,7 +36,7 @@ class UserOut(BaseModel):
     role: Role
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class GoogleAuthSchema(BaseModel):

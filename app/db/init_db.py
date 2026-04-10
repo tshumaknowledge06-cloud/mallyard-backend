@@ -5,5 +5,9 @@ from app.db.session import engine
 from app.db import models
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ DB initialized")
+    except Exception as e:
+        print("❌ DB connection failed:", e)
 

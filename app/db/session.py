@@ -5,8 +5,8 @@ from app.core.config import settings
 
 # Create engine
 engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
+    DATABASE_URL,
+    connect_args={"sslmode": "require"}
 )
 
 # Session factory
