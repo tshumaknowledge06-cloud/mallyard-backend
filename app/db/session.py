@@ -1,11 +1,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 from app.core.config import settings
+
+print("Using DB:", settings.DATABASE_URL)
 
 # Create engine
 engine = create_engine(
-    DATABASE_URL,
+    settings.DATABASE_URL,
     connect_args={"sslmode": "require"}
 )
 
