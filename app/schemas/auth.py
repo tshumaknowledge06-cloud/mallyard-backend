@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, constr
 from app.db.models.user import Role
+from pydantic import field_validator
 
 
 class UserCreate(BaseModel):
@@ -18,10 +19,26 @@ class UserCreate(BaseModel):
     
     role: Role = Role.customer
 
+    @field_validator("password")
+    def clean_password(cls, v):
+        if not isinstance(v, str):
+            raise ValueError("Password must be a string")
+        return v.strip()
+    
+    @field_validator("full_name")
+    def clean_name(cls, v):
+        if not isinstance(v, str):
+           raise ValueError("Full name must be a string")
+        return " ".join(v.split())
+
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("password")
+    def clean_password(cls, v):
+        return v.strip()
 
 
 class Token(BaseModel):
@@ -43,3 +60,5 @@ class GoogleAuthSchema(BaseModel):
     email: EmailStr
     full_name: str
     role: str
+
+
