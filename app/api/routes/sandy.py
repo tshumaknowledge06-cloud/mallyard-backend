@@ -166,6 +166,7 @@ def sandy_chat(
     # -------------------------------------------------
     # INTENT 2 — BUYER SEARCH ENGINE
     # Guest-safe
+    # 🔥 STEP 1-3: SQL filtering + tightened scoring + minimum score filter
     # -------------------------------------------------
 
     if any(word in message for word in buyer_keywords):
@@ -182,32 +183,52 @@ def sandy_chat(
                     if word not in search_terms:
                         search_terms.append(word)
 
-        matched_results = []
-        seen_listing_ids = set()
+        if not search_terms:
+            return {
+                "intent": "buyer_discovery",
+                "reply": "I couldn't find that product or service yet. Try searching with a more specific product or service name."
+            }
 
+        from sqlalchemy import or_
+
+        # 🔥 STEP 1: Filter in SQL (not Python)
+        # Build OR filters for each search term across name, description, and merchant name
+        search_filters = []
+        for term in search_terms:
+            search_filters.append(Listing.name.ilike(f"%{term}%"))
+            search_filters.append(Listing.description.ilike(f"%{term}%"))
+            search_filters.append(Merchant.business_name.ilike(f"%{term}%"))
+
+        # 🔥 STEP 1: Apply SQL filters with limit
         listings = (
             db.query(Listing)
             .join(Merchant, Listing.merchant_id == Merchant.id)
-            .limit(50)
+            .filter(or_(*search_filters))
+            .limit(30)  # Reduced from 50 to be more precise
             .all()
         )
 
+        matched_results = []
+        seen_listing_ids = set()
+
+        # 🔥 STEP 2 & 3: Tightened scoring + minimum score filter
         for listing in listings:
             listing_name = (listing.name or "").lower()
             listing_description = (listing.description or "").lower()
-            listing_text = f"{listing_name} {listing_description}"
 
             score = 0
 
             for term in search_terms:
+                # 🔥 STEP 2: Tightened scoring (exact match much higher weight)
                 if term == listing_name:
-                    score += 5
+                    score += 10   # exact match (VERY strong)
                 elif term in listing_name:
-                    score += 3
+                    score += 5    # partial name match
                 elif term in listing_description:
-                    score += 1
+                    score += 2    # description match
 
-            if score > 0 and listing.id not in seen_listing_ids:
+            # 🔥 STEP 3: Minimum score filter (only results with score >= 3)
+            if score >= 3 and listing.id not in seen_listing_ids:
                 merchant_name = (
                     listing.merchant.business_name
                     if listing.merchant
@@ -216,11 +237,12 @@ def sandy_chat(
 
                 matched_results.append({
                     "id": listing.id,
-                    "text": f"{listing.name} — ${listing.price} — {merchant_name}",
+                    "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
                     "score": score
                 })
                 seen_listing_ids.add(listing.id)
 
+        # Category and subcategory fallback (unchanged, but also filtered)
         categories = db.query(Category).all()
 
         for category in categories:
@@ -246,7 +268,7 @@ def sandy_chat(
 
                     matched_results.append({
                         "id": listing.id,
-                        "text": f"{listing.name} — ${listing.price} — {merchant_name}",
+                        "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
                         "score": 2
                     })
                     seen_listing_ids.add(listing.id)
@@ -276,7 +298,7 @@ def sandy_chat(
 
                     matched_results.append({
                         "id": listing.id,
-                        "text": f"{listing.name} — ${listing.price} — {merchant_name}",
+                        "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
                         "score": 2
                     })
                     seen_listing_ids.add(listing.id)
