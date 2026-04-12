@@ -116,7 +116,7 @@ def sandy_chat(
     stop_words = {
         "i", "me", "my", "a", "an", "the", "for", "to", "of", "on", "in",
         "find", "show", "want", "need", "get", "search", "looking", "listings",
-        "listing", "please", "some", "any"
+        "listing", "please", "some", "any", "am"
     }
 
     # -------------------------------------------------
@@ -166,7 +166,7 @@ def sandy_chat(
     # -------------------------------------------------
     # INTENT 2 — BUYER SEARCH ENGINE
     # Guest-safe
-    # 🔥 STEP 1-3: SQL filtering + tightened scoring + minimum score filter
+    # 🔥 IMPROVED: Higher threshold + limited fallback + prefix matching
     # -------------------------------------------------
 
     if any(word in message for word in buyer_keywords):
@@ -191,27 +191,26 @@ def sandy_chat(
 
         from sqlalchemy import or_
 
-        # 🔥 STEP 1: Filter in SQL (not Python)
-        # Build OR filters for each search term across name, description, and merchant name
+        # 🔥 IMPROVED: Prefix matching (more precise than contains)
         search_filters = []
         for term in search_terms:
-            search_filters.append(Listing.name.ilike(f"%{term}%"))
-            search_filters.append(Listing.description.ilike(f"%{term}%"))
-            search_filters.append(Merchant.business_name.ilike(f"%{term}%"))
+            search_filters.append(Listing.name.ilike(f"{term}%"))
+            search_filters.append(Listing.description.ilike(f"{term}%"))
+            search_filters.append(Merchant.business_name.ilike(f"{term}%"))
 
-        # 🔥 STEP 1: Apply SQL filters with limit
+        # Apply SQL filters with limit
         listings = (
             db.query(Listing)
             .join(Merchant, Listing.merchant_id == Merchant.id)
             .filter(or_(*search_filters))
-            .limit(30)  # Reduced from 50 to be more precise
+            .limit(20)  # Reduced for better precision
             .all()
         )
 
         matched_results = []
         seen_listing_ids = set()
 
-        # 🔥 STEP 2 & 3: Tightened scoring + minimum score filter
+        # Scoring with improved weights
         for listing in listings:
             listing_name = (listing.name or "").lower()
             listing_description = (listing.description or "").lower()
@@ -219,16 +218,21 @@ def sandy_chat(
             score = 0
 
             for term in search_terms:
-                # 🔥 STEP 2: Tightened scoring (exact match much higher weight)
+                # Exact match (highest weight)
                 if term == listing_name:
-                    score += 10   # exact match (VERY strong)
+                    score += 15
+                # Name starts with term (strong)
+                elif listing_name.startswith(term):
+                    score += 10
+                # Term in name (moderate)
                 elif term in listing_name:
-                    score += 5    # partial name match
+                    score += 5
+                # Term in description (lower)
                 elif term in listing_description:
-                    score += 2    # description match
+                    score += 2
 
-            # 🔥 STEP 3: Minimum score filter (only results with score >= 3)
-            if score >= 3 and listing.id not in seen_listing_ids:
+            # 🔥 IMPROVED: Higher minimum score threshold (only quality matches)
+            if score >= 5 and listing.id not in seen_listing_ids:
                 merchant_name = (
                     listing.merchant.business_name
                     if listing.merchant
@@ -242,66 +246,70 @@ def sandy_chat(
                 })
                 seen_listing_ids.add(listing.id)
 
-        # Category and subcategory fallback (unchanged, but also filtered)
-        categories = db.query(Category).all()
+        # 🔥 IMPROVED: Severely limited category/subcategory fallback
+        # Only add if we have FEW results (less than 3) and only add 3 total
+        if len(matched_results) < 3:
+            fallback_added = 0
+            MAX_FALLBACK = 3
 
-        for category in categories:
-            category_name = (category.name or "").lower()
-
-            if category_name in message:
-                category_listings = (
-                    db.query(Listing)
-                    .filter(Listing.category_id == category.id)
-                    .limit(10)
-                    .all()
-                )
-
-                for listing in category_listings:
-                    if listing.id in seen_listing_ids:
-                        continue
-
-                    merchant_name = (
-                        listing.merchant.business_name
-                        if listing.merchant
-                        else "Unknown Seller"
+            # Category fallback (limited)
+            categories = db.query(Category).all()
+            for category in categories:
+                if fallback_added >= MAX_FALLBACK:
+                    break
+                category_name = (category.name or "").lower()
+                if category_name in message:
+                    category_listings = (
+                        db.query(Listing)
+                        .filter(Listing.category_id == category.id)
+                        .limit(MAX_FALLBACK - fallback_added)
+                        .all()
                     )
+                    for listing in category_listings:
+                        if listing.id in seen_listing_ids:
+                            continue
+                        merchant_name = (
+                            listing.merchant.business_name
+                            if listing.merchant
+                            else "Unknown Seller"
+                        )
+                        matched_results.append({
+                            "id": listing.id,
+                            "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
+                            "score": 3
+                        })
+                        seen_listing_ids.add(listing.id)
+                        fallback_added += 1
 
-                    matched_results.append({
-                        "id": listing.id,
-                        "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
-                        "score": 2
-                    })
-                    seen_listing_ids.add(listing.id)
-
-        subcategories = db.query(SubCategory).all()
-
-        for subcategory in subcategories:
-            subcategory_name = (subcategory.name or "").lower()
-
-            if subcategory_name in message:
-                sub_listings = (
-                    db.query(Listing)
-                    .filter(Listing.subcategory_id == subcategory.id)
-                    .limit(10)
-                    .all()
-                )
-
-                for listing in sub_listings:
-                    if listing.id in seen_listing_ids:
-                        continue
-
-                    merchant_name = (
-                        listing.merchant.business_name
-                        if listing.merchant
-                        else "Unknown Seller"
-                    )
-
-                    matched_results.append({
-                        "id": listing.id,
-                        "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
-                        "score": 2
-                    })
-                    seen_listing_ids.add(listing.id)
+            # Subcategory fallback (limited)
+            if fallback_added < MAX_FALLBACK:
+                subcategories = db.query(SubCategory).all()
+                for subcategory in subcategories:
+                    if fallback_added >= MAX_FALLBACK:
+                        break
+                    subcategory_name = (subcategory.name or "").lower()
+                    if subcategory_name in message:
+                        sub_listings = (
+                            db.query(Listing)
+                            .filter(Listing.subcategory_id == subcategory.id)
+                            .limit(MAX_FALLBACK - fallback_added)
+                            .all()
+                        )
+                        for listing in sub_listings:
+                            if listing.id in seen_listing_ids:
+                                continue
+                            merchant_name = (
+                                listing.merchant.business_name
+                                if listing.merchant
+                                else "Unknown Seller"
+                            )
+                            matched_results.append({
+                                "id": listing.id,
+                                "text": f"{listing.name} — {listing.currency} {listing.price} — {merchant_name}",
+                                "score": 3
+                            })
+                            seen_listing_ids.add(listing.id)
+                            fallback_added += 1
 
         if matched_results:
             matched_results = sorted(
@@ -310,8 +318,9 @@ def sandy_chat(
                 reverse=True
             )
 
+            # Limit to top 5 results for cleaner response
             results_text = "\n".join(
-                item["text"] for item in matched_results[:10]
+                item["text"] for item in matched_results[:5]
             )
 
             return {
