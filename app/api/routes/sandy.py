@@ -35,13 +35,14 @@ def sandy_discovery(
             joinedload(Listing.subcategory)
         )
         .join(Merchant, Listing.merchant_id == Merchant.id)
-        .join(SubCategory, Listing.subcategory_id == SubCategory.id)
+        .outerjoin(SubCategory, Listing.subcategory_id == SubCategory.id)
+        .filter(Merchant.status == "approved")
         .filter(
             or_(
                 Listing.name.ilike(search),
                 Listing.description.ilike(search),
                 Merchant.business_name.ilike(search),
-                SubCategory.name.ilike(search),          # ✅ subcategory search
+                SubCategory.name.ilike(search),          
             )
         )
         .limit(30)

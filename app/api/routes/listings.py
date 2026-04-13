@@ -39,8 +39,8 @@ def create_listing(
     if not merchant:
         raise HTTPException(status_code=403, detail="Not a merchant")
 
-    if merchant.status != "approved":
-        raise HTTPException(status_code=403, detail="Merchant not approved")
+    if merchant.status not in ["approved", "pending_verification"]:
+        raise HTTPException(status_code=403, detail="Merchant not allowed")
 
     listing = Listing(
         merchant_id=merchant.id,
