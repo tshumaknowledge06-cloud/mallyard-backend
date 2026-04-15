@@ -103,6 +103,35 @@ def get_my_merchant(
         }
     }
 
+
+# -------------------------
+# Update My Merchant Profile
+# -------------------------
+@router.put("/me", response_model=MerchantOut)
+def update_my_merchant(
+    merchant_in: MerchantCreate,  # reuse schema for now
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    merchant = db.query(Merchant).filter(
+        Merchant.user_id == current_user.id
+    ).first()
+
+    if not merchant:
+        raise HTTPException(status_code=404, detail="Merchant not found")
+
+    # ✅ Update only allowed fields
+    merchant.business_name = merchant_in.business_name
+    merchant.description = merchant_in.description
+    merchant.location = merchant_in.location
+    merchant.contact_phone = merchant_in.contact_phone
+
+    db.commit()
+    db.refresh(merchant)
+
+    return merchant
+
+
 # -------------------------
 # Approve merchant (ADMIN ONLY)
 # -------------------------

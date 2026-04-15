@@ -8,6 +8,7 @@ from app.schemas.booking import BookingCreate, BookingOut, BookingUpdate
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.db.models.merchant import Merchant
+from app.core.email import send_email
 
 router = APIRouter()
 
@@ -34,7 +35,7 @@ def create_booking(
             detail="Bookings are only allowed for service listings"
         )
 
-    # ✅ Get merchant properly
+    # ✅ Get merchant
     merchant = db.query(Merchant).filter(
         Merchant.id == listing.merchant_id
     ).first()
@@ -42,18 +43,18 @@ def create_booking(
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
 
-    # 🚫 PREVENT SELF-BOOKING (🔥 CORE FIX)
+    # 🚫 Prevent self-booking
     if merchant.user_id == current_user.id:
         raise HTTPException(
             status_code=400,
             detail="You cannot book your own service"
         )
 
-    # ✅ CREATE BOOKING
+    # ✅ Create booking
     new_booking = Booking(
         listing_id=listing.id,
         customer_id=current_user.id,
-        seller_id=merchant.id,  # ✅ ALWAYS merchant.id
+        seller_id=merchant.id,
         description=booking.description,
         contact_number=booking.contact_number,
         preferred_time=booking.preferred_time,
@@ -65,6 +66,36 @@ def create_booking(
     db.add(new_booking)
     db.commit()
     db.refresh(new_booking)
+
+    # ✅ NON-BLOCKING EMAIL (CORRECTED)
+    seller_user = db.query(User).filter(
+        User.id == merchant.user_id
+    ).first()
+
+    if seller_user:
+        try:
+            send_email(
+                to=seller_user.email,
+                subject="New Booking Received — Take Action",
+                body=f"""
+Hie Champ 👋
+
+You’ve just received a new booking on The Mallyard.
+
+Booking ID: {new_booking.id}
+
+A customer is waiting for your response.
+
+Don’t keep them waiting — log in now and connect:
+https://themallyard.com
+
+Speed builds trust. Trust builds business.
+
+— The Mallyard
+"""
+            )
+        except Exception:
+            pass
 
     return new_booking
 

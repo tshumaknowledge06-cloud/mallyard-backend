@@ -13,6 +13,13 @@ class DeliveryPartnerCreate(BaseModel):
     operating_city: str
 
 
+class DeliveryPartnerUpdate(BaseModel):
+    full_name: str
+    phone_number: str
+    vehicle_type: str
+    license_number: str
+    operating_city: str
+
 class DeliveryPartnerOut(BaseModel):
     id: int
     full_name: str

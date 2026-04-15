@@ -11,7 +11,7 @@ class MerchantBase(BaseModel):
     description: Optional[str] = None
     merchant_type: str
     location: Optional[str] = None
-    contact_phone: Optional[str] = None
+    contact_phone: str
     payment_methods: Optional[List[str]] = None
 
     class Config:

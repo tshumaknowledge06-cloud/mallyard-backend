@@ -95,6 +95,38 @@ def get_my_delivery_profile(
 
 
 # -------------------------
+# Update My Delivery Profile
+# -------------------------
+@router.put("/me", response_model=DeliveryPartnerOut)
+def update_my_delivery_profile(
+    payload: DeliveryPartnerUpdate, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "delivery_partner":
+        raise HTTPException(status_code=403, detail="Only delivery partners allowed")
+
+    partner = db.query(DeliveryPartner).filter(
+        DeliveryPartner.user_id == current_user.id
+    ).first()
+
+    if not partner:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # ✅ Update allowed fields only
+    partner.full_name = payload.full_name
+    partner.phone_number = payload.phone_number
+    partner.vehicle_type = payload.vehicle_type
+    partner.license_number = payload.license_number
+    partner.operating_city = payload.operating_city
+
+    db.commit()
+    db.refresh(partner)
+
+    return partner
+
+
+# -------------------------
 # Admin - Pending Partners
 # -------------------------
 @router.get("/pending", response_model=list[DeliveryPartnerOut])
