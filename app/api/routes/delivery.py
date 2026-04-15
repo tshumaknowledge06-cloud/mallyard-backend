@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.db.models.delivery_partner import DeliveryPartner
 from app.schemas.delivery_partner import (
     DeliveryPartnerCreate,
+    DeliveryPartnerUpdate,
     DeliveryPartnerOut
 )
 from app.api.deps import get_current_user
