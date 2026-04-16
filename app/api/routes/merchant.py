@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models.user import User
 from app.db.models.merchant import Merchant
-from app.schemas.merchant import MerchantCreate, MerchantOut
+from app.schemas.merchant import MerchantCreate, MerchantOut, MerchantUpdate
 from app.api.deps import get_current_user, require_role
 from app.db.models.listing import Listing
 from app.db.models.audit_log import AuditLog
