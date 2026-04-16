@@ -14,6 +14,12 @@ class MerchantBase(BaseModel):
     contact_phone: str
     payment_methods: Optional[List[str]] = None
 
+class MerchantUpdate(BaseModel):
+    business_name: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
+    contact_phone: Optional[str] = None
+
     class Config:
         from_attributes = True
 

@@ -109,7 +109,7 @@ def get_my_merchant(
 # -------------------------
 @router.put("/me", response_model=MerchantOut)
 def update_my_merchant(
-    merchant_in: MerchantCreate,  # reuse schema for now
+    merchant_in: MerchantUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
