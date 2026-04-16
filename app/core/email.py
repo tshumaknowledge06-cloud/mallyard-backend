@@ -1,40 +1,26 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Optional
-
+import requests
 from app.core.config import settings
 
 
-def send_email(
-    to: str,
-    subject: str,
-    body: str,
-    html: Optional[str] = None,
-):
-    message = MIMEMultipart("alternative")
-    message["From"] = settings.SMTP_FROM
-    message["To"] = to
-    message["Subject"] = subject
-
-    text_part = MIMEText(body, "plain")
-    message.attach(text_part)
-
-    if html:
-        html_part = MIMEText(html, "html")
-        message.attach(html_part)
-
+def send_email(to: str, subject: str, body: str):
     try:
-        
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": settings.EMAIL_FROM,
+                "to": [to],
+                "subject": subject,
+                "html": body,
+            },
+            timeout=10
+        )
 
-        server = smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT)
-        server.starttls()
-        server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-        server.sendmail(settings.SMTP_FROM, to, message.as_string())
-        server.quit()
-
-        
+        if response.status_code not in [200, 201]:
+            print("❌ Resend error:", response.text)
 
     except Exception as e:
-        print("Email sending failed:", e)
-        raise e
+        print("❌ Email sending failed:", str(e))

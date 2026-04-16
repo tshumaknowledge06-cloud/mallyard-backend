@@ -78,18 +78,20 @@ def create_booking(
                 to=seller_user.email,
                 subject="New Booking Received — Take Action",
                 body=f"""
-Hie Champ 👋
+Hey Champ 👊
 
-You’ve just received a new booking on The Mallyard.
+You just received a new booking on The Mallyard.
 
 Booking ID: {new_booking.id}
 
-A customer is waiting for your response.
+A customer is waiting for you right now.
 
-Don’t keep them waiting — log in now and connect:
-https://themallyard.com
+Don’t lose the moment — fast response builds trust and wins repeat business.
 
-Speed builds trust. Trust builds business.
+👉 Open your dashboard:
+https://themallyard.com/login/merchant
+
+Stay sharp. Stay winning.
 
 — The Mallyard
 """

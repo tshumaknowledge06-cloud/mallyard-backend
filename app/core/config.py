@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     STRIPE_ENABLED: bool = False
     PAYPAL_ENABLED: bool = False
 
+    RESEND_API_KEY: str
+    EMAIL_FROM: str = "Mallyard <noreply@themallyard.com>"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

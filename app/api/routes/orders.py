@@ -117,7 +117,22 @@ def create_order(
             send_email(
                 to=seller_user.email,
                 subject="New Order Pending Confirmation",
-                body=f"New order received. Order ID: {order.id}. Kindly access your dasboard to review the order details. https://themallyard.com"
+                body=f"""
+New Order Alert 🚀
+
+Order ID: {order.id}
+
+A customer has placed an order in your store.
+
+Speed is everything — confirm it quickly and keep the experience premium.
+
+👉 Access your dashboard:
+https://themallyard.com/login/merchant
+
+Build trust. Close fast.
+
+— The Mallyard
+"""
             )
         except Exception:
             pass
