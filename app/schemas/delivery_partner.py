@@ -17,7 +17,7 @@ class DeliveryPartnerUpdate(BaseModel):
     full_name: str
     phone_number: str
     vehicle_type: str
-    license_number: str
+    license_number: Optional[str] = None
     operating_city: str
 
 class DeliveryPartnerOut(BaseModel):
