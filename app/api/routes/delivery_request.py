@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import List, Optional
 
 from app.db.session import get_db
 from app.db.models.delivery_request import DeliveryRequest
@@ -41,12 +42,12 @@ def submit_pickup_details(
     )
 
     if not delivery_request:
-        raise HTTPException(404, "Delivery request not found")
+        raise HTTPException(status_code=404, detail="Delivery request not found")
 
     order = db.query(Order).filter(Order.id == order_id).first()
 
     if not order:
-        raise HTTPException(404, "Order not found")
+        raise HTTPException(status_code=404, detail="Order not found")
 
     # ✅ find merchant linked to seller user
     merchant = db.query(Merchant).filter(
@@ -54,11 +55,11 @@ def submit_pickup_details(
     ).first()
 
     if not merchant:
-        raise HTTPException(404, "Merchant profile not found")
+        raise HTTPException(status_code=404, detail="Merchant profile not found")
 
     # ensure seller owns order
     if order.merchant_id != merchant.id:
-        raise HTTPException(403, "Not your order")
+        raise HTTPException(status_code=403, detail="Not your order")
 
     # seller submits pickup
     delivery_request.pickup_address = pickup_data.pickup_address
@@ -73,9 +74,7 @@ def submit_pickup_details(
 # ----------------------------------------
 # Admin: View All Delivery Requests
 # ----------------------------------------
-from typing import Optional
-
-@router.get("/", response_model=list[DeliveryRequestOut])
+@router.get("/", response_model=List[DeliveryRequestOut])
 def get_all_delivery_requests(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -83,15 +82,36 @@ def get_all_delivery_requests(
 ):
 
     if current_user.role != "admin":
-        raise HTTPException(403, "Only admins allowed")
+        raise HTTPException(status_code=403, detail="Only admins allowed")
 
-    query = db.query(DeliveryRequest)
+    # ✅ FIX: Join with Order to get delivery_price and estimated_delivery_days
+    query = db.query(DeliveryRequest, Order).join(
+        Order, Order.id == DeliveryRequest.order_id
+    )
 
     if status:
         query = query.filter(DeliveryRequest.status == status)
 
-    return query.all()
+    results = query.all()
 
+    responses = []
+
+    for delivery_request, order in results:
+        responses.append({
+            "id": delivery_request.id,
+            "seller_id": delivery_request.seller_id,
+            "order_id": order.id,
+            "pickup_address": delivery_request.pickup_address,
+            "dropoff_address": delivery_request.dropoff_address,
+            "delivery_instructions": delivery_request.delivery_instructions,
+            "status": delivery_request.status,
+            "created_at": delivery_request.created_at,
+            "delivery_price": order.delivery_price,
+            "estimated_delivery_days": order.estimated_delivery_days,
+            "distance_km": order.distance_km
+        })
+
+    return responses
 
 # ----------------------------------------
 # Admin completes delivery
@@ -112,12 +132,13 @@ def complete_delivery(
             detail="Only admins can complete delivery"
         )
 
+    # ✅ FIX: Use filter().first() instead of .get()
     delivery_request = db.query(DeliveryRequest).filter(
         DeliveryRequest.id == request_id
     ).first()
 
     if not delivery_request:
-        raise HTTPException(404, "Delivery request not found")
+        raise HTTPException(status_code=404, detail="Delivery request not found")
 
     # -----------------------------
     # Must already be delivered
@@ -169,17 +190,18 @@ def complete_delivery(
         "delivery_request_id": delivery_request.id,
         "partner_completed_deliveries": partner.completed_deliveries
     }
+
 # ----------------------------------------
 # Seller views own delivery requests
 # ----------------------------------------
-@router.get("/seller", response_model=list[DeliveryRequestOut])
+@router.get("/seller", response_model=List[DeliveryRequestOut])
 def get_seller_delivery_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
 
     if current_user.role != "seller":
-        raise HTTPException(403, "Seller only")
+        raise HTTPException(status_code=403, detail="Seller only")
 
     merchant = db.query(Merchant).filter(
         Merchant.user_id == current_user.id
@@ -188,13 +210,31 @@ def get_seller_delivery_requests(
     if not merchant:
         return []
 
-    return (
-        db.query(DeliveryRequest)
-        .join(Order, DeliveryRequest.order_id == Order.id)
-        .filter(Order.merchant_id == merchant.id)
+    results = (
+        db.query(DeliveryRequest, Order)
+        .join(Order, Order.id == DeliveryRequest.order_id)
+        .filter(DeliveryRequest.seller_id == merchant.id)
         .all()
     )
 
+    responses = []
+
+    for delivery_request, order in results:
+        responses.append({
+            "id": delivery_request.id,
+            "seller_id": delivery_request.seller_id,
+            "order_id": order.id,
+            "pickup_address": delivery_request.pickup_address,
+            "dropoff_address": delivery_request.dropoff_address,
+            "delivery_instructions": delivery_request.delivery_instructions,
+            "status": delivery_request.status,
+            "created_at": delivery_request.created_at,
+            "delivery_price": order.delivery_price,
+            "estimated_delivery_days": order.estimated_delivery_days,
+            "distance_km": order.distance_km
+        })
+
+    return responses
 
 # ----------------------------------------
 # Delivery Partner: View Assigned Deliveries
@@ -275,10 +315,13 @@ def get_partner_deliveries(
             "pickup_address": delivery_request.pickup_address,
             "dropoff_address": order.dropoff_address,
             "delivery_instructions": order.delivery_instructions,
+
+            "delivery_price": order.delivery_price or 0,
+            "estimated_delivery_days": order.estimated_delivery_days or 0,
+            "distance_km": order.distance_km or 0,
         })
 
     return deliveries
-
 
 # ----------------------------------------
 # Delivery Partner: Update Delivery Status
@@ -306,6 +349,7 @@ def update_delivery_status(
         )
 
     # Verify assignment
+    # ✅ FIX: Use filter().first() instead of .get()
     match = db.query(DeliveryMatch).filter(
         DeliveryMatch.delivery_request_id == delivery_request_id,
         DeliveryMatch.delivery_partner_id == delivery_partner.id
@@ -317,7 +361,10 @@ def update_delivery_status(
             detail="Not assigned to this delivery"
         )
 
-    delivery_request = db.query(DeliveryRequest).get(delivery_request_id)
+    # ✅ FIX: Use filter().first() instead of .get()
+    delivery_request = db.query(DeliveryRequest).filter(
+        DeliveryRequest.id == delivery_request_id
+    ).first()
 
     if not delivery_request:
         raise HTTPException(
@@ -352,7 +399,7 @@ def update_delivery_status(
 
     # Auto-complete order when delivered
     if new_status == "delivered":
-        order = db.query(Order).get(delivery_request.order_id)
+        order = db.query(Order).filter(Order.id == delivery_request.order_id).first()
         if order:
             order.status = "completed"
 

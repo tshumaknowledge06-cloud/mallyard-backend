@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, constr
 from app.db.models.user import Role
 from pydantic import field_validator
+from typing import Optional
 
 
 class UserCreate(BaseModel):
@@ -17,6 +18,9 @@ class UserCreate(BaseModel):
         strip_whitespace=True
     )
     
+    phone_number: Optional[str]
+    default_address: Optional[str]
+    city_name: Optional[str]
     role: Role = Role.customer
 
     @field_validator("password")
@@ -61,4 +65,9 @@ class GoogleAuthSchema(BaseModel):
     full_name: str
     role: str
 
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    default_address: Optional[str] = None
+    city_name: Optional[str] = None
 

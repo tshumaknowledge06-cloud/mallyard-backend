@@ -10,6 +10,8 @@ from app.db.models.listing import Listing
 from app.db.models.audit_log import AuditLog
 from fastapi import UploadFile, File
 from app.utils.file_upload import upload_file
+from app.services.city_service import resolve_city
+from app.db.models.city_request import CityRequest
 
 router = APIRouter(
     prefix="/merchants",
@@ -34,32 +36,38 @@ def merchant_health_check():
 )
 def register_merchant(
     merchant_in: MerchantCreate,
-    user_id: int,  # ✅ NEW: passed from frontend
+    user_id: int,
     db: Session = Depends(get_db)
 ):
-
-    # ✅ Ensure user exists
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        raise HTTPException(status_code=404, detail="User not found")
 
-    # ✅ Prevent duplicate merchant profiles
-    existing = (
-        db.query(Merchant)
-        .filter(Merchant.user_id == user_id)
-        .first()
-    )
-
+    existing = db.query(Merchant).filter(Merchant.user_id == user_id).first()
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Merchant profile already exists for this user"
-        )
+        raise HTTPException(status_code=400, detail="Merchant already exists")
 
-    # ✅ Create merchant
+    # 🔥 NORMALIZE INPUT
+    city_name = merchant_in.city_name.strip().lower() if merchant_in.city_name else None
+
+    # 🔥 RESOLVE CITY 
+    city_id = None
+
+    if city_name:
+        city_id = resolve_city(db, city_name)
+
+        if not city_id:
+            # 🔥 UPSERT CITY REQUEST (normalized)
+            existing_request = db.query(CityRequest).filter(
+                CityRequest.name == city_name
+            ).first()
+
+            if existing_request:
+                existing_request.request_count += 1
+            else:
+                new_request = CityRequest(name=city_name)
+                db.add(new_request)
+
     merchant = Merchant(
         user_id=user_id,
         business_name=merchant_in.business_name,
@@ -67,6 +75,8 @@ def register_merchant(
         merchant_type=merchant_in.merchant_type,
         location=merchant_in.location,
         contact_phone=merchant_in.contact_phone,
+        pickup_address=merchant_in.pickup_address,
+        city_id=city_id,
         status="pending_verification"
     )
 
@@ -74,7 +84,18 @@ def register_merchant(
     db.commit()
     db.refresh(merchant)
 
-    return merchant
+    return {
+         "id": merchant.id,
+         "business_name": merchant.business_name,
+         "description": merchant.description,
+         "merchant_type": merchant.merchant_type,
+         "location": merchant.location,
+         "contact_phone": merchant.contact_phone,
+         "pickup_address": merchant.pickup_address,
+         "city_id": merchant.city_id,
+         "city_name": merchant.city.name if merchant.city else None,  # ✅ Add this
+         "status": merchant.status,
+}
 
 
 @router.get("/me")
@@ -120,16 +141,62 @@ def update_my_merchant(
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
 
-    # ✅ Update only allowed fields
-    merchant.business_name = merchant_in.business_name
-    merchant.description = merchant_in.description
-    merchant.location = merchant_in.location
-    merchant.contact_phone = merchant_in.contact_phone
+    # 🔥 NORMALIZE INPUT
+    city_name = merchant_in.city_name.strip().lower() if merchant_in.city_name else None
+
+    # 🔥 RESOLVE CITY 
+    city_id = None
+
+    if city_name:
+        city_id = resolve_city(db, city_name)
+
+        if not city_id:
+            # 🔥 UPSERT CITY REQUEST (normalized)
+            existing_request = db.query(CityRequest).filter(
+                CityRequest.name == city_name
+            ).first()
+
+            if existing_request:
+                existing_request.request_count += 1
+            else:
+                new_request = CityRequest(name=city_name)
+                db.add(new_request)
+
+        merchant.city_id = city_id
+
+    # 🔥 SAFE FIELD UPDATES (only if provided)
+    if merchant_in.business_name is not None:
+        merchant.business_name = merchant_in.business_name
+
+    if merchant_in.description is not None:
+        merchant.description = merchant_in.description
+
+    if merchant_in.location is not None:
+        merchant.location = merchant_in.location
+
+    if merchant_in.pickup_address is not None:
+        merchant.pickup_address = merchant_in.pickup_address
+
+    if merchant_in.contact_phone is not None:
+        merchant.contact_phone = merchant_in.contact_phone
 
     db.commit()
     db.refresh(merchant)
 
-    return merchant
+    return {
+        "id": merchant.id,
+        "business_name": merchant.business_name,
+        "description": merchant.description,
+        "merchant_type": merchant.merchant_type, 
+        "location": merchant.location,
+        "contact_phone": merchant.contact_phone,
+        "pickup_address": merchant.pickup_address,
+        "city_id": merchant.city_id if merchant.city_id else 0, 
+        "city_name": merchant.city.name if merchant.city else None,
+        "status": merchant.status,  
+        "created_at": merchant.created_at,
+        "user_id": merchant.user_id,
+    }
 
 
 # -------------------------

@@ -3,9 +3,12 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
-from app.schemas.auth import UserCreate, Token
+from app.schemas.auth import UserCreate, UserUpdate, Token
 from app.db.models.user import User
+from app.db.models.city_request import CityRequest 
 from app.api.deps import get_db
+from app.services.city_service import resolve_city
+from app.api.deps import get_current_user
 from app.core.security import (
     hash_password,
     verify_password,
@@ -29,8 +32,10 @@ limiter = Limiter(key_func=get_remote_address)
 # Register
 # -------------------------
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(user_in: UserCreate, db: Session = Depends(get_db)):
-
+def register(
+    user_in: UserCreate,
+    db: Session = Depends(get_db)
+):
     existing_user = db.query(User).filter(User.email == user_in.email).first()
     if existing_user:
         raise HTTPException(
@@ -38,13 +43,37 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
 
+    # 🔥 NORMALIZE INPUT
+    city_name = user_in.city_name.strip().lower() if user_in.city_name else None
+
+    # 🔥 RESOLVE CITY 
+    city_id = None
+
+    if city_name:
+        city_id = resolve_city(db, city_name)
+
+        if not city_id:
+            # 🔥 UPSERT CITY REQUEST (normalized)
+            existing_request = db.query(CityRequest).filter(
+                CityRequest.name == city_name
+            ).first()
+
+            if existing_request:
+                existing_request.request_count += 1
+            else:
+                new_request = CityRequest(name=city_name)
+                db.add(new_request)
+
     hashed_password = hash_password(user_in.password)
 
     new_user = User(
         email=user_in.email,
         full_name=user_in.full_name,
         hashed_password=hashed_password,
-        role = user_in.role if user_in.role in ["customer", "seller"] else "customer"
+        phone_number=user_in.phone_number,
+        default_address=user_in.default_address,
+        city_id=city_id,  # ✅ FIXED (no fallback)
+        role=user_in.role if user_in.role in ["customer", "seller"] else "customer"
     )
 
     db.add(new_user)
@@ -55,9 +84,9 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         "id": new_user.id,
         "email": new_user.email,
         "full_name": new_user.full_name,
-        "role": new_user.role
+        "role": new_user.role,
+        "city_supported": True if city_id else False
     }
-
 
 # -------------------------
 # Login
@@ -116,4 +145,54 @@ def google_auth(payload: GoogleAuthSchema, db: Session = Depends(get_db)):
         "email": user.email,
         "full_name": user.full_name,
         "role": user.role
+    }
+
+@router.put("/me")
+def update_profile(
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 🔥 NORMALIZE INPUT
+    city_name = payload.city_name.strip().lower() if payload.city_name else None
+
+    # 🔥 RESOLVE CITY 
+    city_id = None
+
+    if city_name:
+        city_id = resolve_city(db, city_name)
+
+        if not city_id:
+            # 🔥 UPSERT CITY REQUEST (normalized)
+            existing_request = db.query(CityRequest).filter(
+                CityRequest.name == city_name
+            ).first()
+
+            if existing_request:
+                existing_request.request_count += 1
+            else:
+                new_request = CityRequest(name=city_name)
+                db.add(new_request)
+
+        current_user.city_id = city_id
+
+    # ✅ Update only provided fields (NO overwriting with None)
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name
+
+    if payload.phone_number is not None:
+        current_user.phone_number = payload.phone_number
+
+    if payload.default_address is not None:
+        current_user.default_address = payload.default_address
+
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "id": current_user.id,
+        "full_name": current_user.full_name,
+        "phone_number": current_user.phone_number,
+        "default_address": current_user.default_address,
+        "city": current_user.city.name if current_user.city else None
     }

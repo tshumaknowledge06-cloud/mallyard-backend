@@ -41,6 +41,9 @@ class OrderOut(BaseModel):
     quantity: Optional[int] = 1
     total_price: Optional[float] = None
 
+    delivery_price: Optional[float] = None
+    estimated_delivery_days: Optional[int]
+
     # ✅ MEDIA SUPPORT
     image_urls: Optional[List[str]] = None
     video_url: Optional[str] = None

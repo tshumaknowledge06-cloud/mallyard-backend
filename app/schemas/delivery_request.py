@@ -2,7 +2,6 @@ from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
 
-
 class DeliveryRequestOut(BaseModel):
     id: int
     order_id: int
@@ -10,8 +9,12 @@ class DeliveryRequestOut(BaseModel):
     pickup_address: Optional[str]
     dropoff_address: Optional[str]
 
-    # ✅ NEW
     delivery_instructions: Optional[str]
+
+    # 🔥 NEW
+    delivery_price: Optional[float]
+    estimated_delivery_days: Optional[int]
+    distance_km: Optional [float] = None
 
     status: str
     created_at: datetime
@@ -27,10 +30,6 @@ class PickupCreate(BaseModel):
 class DeliveryRequestCreate(BaseModel):
     delivery_method: str
     delivery_instructions: Optional[str] = None
-
-
-from pydantic import BaseModel
-from datetime import datetime
 
 
 class DeliveryPartnerView(BaseModel):
@@ -51,7 +50,11 @@ class DeliveryPartnerView(BaseModel):
 
     listing_name: str
 
+    # 🔥 CRITICAL ADDITIONS
+    delivery_price: float | None
+    estimated_delivery_days: int | None
+    distance_km: float | None
+    
     class Config:
-        from_attributes = True   # ✅ Pydantic v2 (replaces orm_mode)
-
+        from_attributes = True
 

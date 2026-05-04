@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -45,7 +45,10 @@ class Order(Base):
     dropoff_address = Column(String, nullable=True)  # ✅ needed for delivery
     delivery_instructions = Column(String, nullable=True)
     customer_phone = Column(String, nullable=True)
-    
+    delivery_price = Column(Float, nullable=True)
+    estimated_delivery_days = Column(Integer, nullable=True)
+    distance_km = Column(Float, nullable=True)
+
     # Relationships
     buyer = relationship("User")
     merchant = relationship("Merchant")

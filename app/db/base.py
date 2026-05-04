@@ -12,7 +12,7 @@ from app.db.models.order import Order
 from app.db.models.order_item import OrderItem
 from app.db.models.cart_item import CartItem
 from app.db.models.review import Review
-
+from app.db.models.city_request import CityRequest
 
 
 

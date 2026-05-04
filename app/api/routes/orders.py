@@ -13,6 +13,12 @@ from app.db.models.order_item import OrderItem
 from app.api.deps import get_current_user
 from app.core.email import send_email
 from app.services.order_state_machine import validate_transition
+from app.services.delivery_pricing import (
+    get_intercity_price,
+    handle_missing_route
+)
+from app.services.delivery_pricing import get_intracity_price
+from app.services.delivery_pricing import suggest_route_pricing
 
 router = APIRouter(
     prefix="/orders",
@@ -43,19 +49,6 @@ def create_order(
     if listing.stock_quantity is not None and payload.quantity > listing.stock_quantity:
         raise HTTPException(status_code=400, detail="Insufficient stock")
 
-    # ✅ DELIVERY VALIDATION
-    if payload.delivery_method == "delivery" and not payload.dropoff_address:
-        raise HTTPException(
-            status_code=400,
-            detail="Dropoff address is required for delivery"
-        )
-
-    if not payload.customer_phone:
-        raise HTTPException(
-            status_code=400,
-            detail="Customer phone is required"
-        )
-
     # ✅ GET MERCHANT
     merchant = db.query(Merchant).filter(
         Merchant.id == listing.merchant_id
@@ -64,22 +57,39 @@ def create_order(
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
 
-    # 🚫 PREVENT SELF-ORDERING (🔥 CORE FIX)
+    # 🚫 PREVENT SELF-ORDERING
     if merchant.user_id == current_user.id:
         raise HTTPException(
             status_code=400,
             detail="You cannot order your own listing"
         )
 
-    # ✅ CREATE ORDER
+    # 🔥 STEP 1: RESOLVE FINAL 
+    final_address = payload.dropoff_address or current_user.default_address
+    final_phone = payload.customer_phone or current_user.phone_number
+
+    # 🔥 STEP 2: VALIDATE using resolved values
+    if payload.delivery_method == "delivery" and not final_address:
+        raise HTTPException(
+            status_code=400,
+            detail="Dropoff address is required for delivery"
+        )
+
+    if not final_phone:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer phone is required"
+        )
+
+    # 🔥 STEP 3: CREATE ORDER using resolved values
     order = Order(
         buyer_id=current_user.id,
         merchant_id=merchant.id,
         listing_id=listing.id,
         delivery_method=payload.delivery_method,
-        dropoff_address=payload.dropoff_address,
+        dropoff_address=final_address,
         delivery_instructions=payload.delivery_instructions,
-        customer_phone=payload.customer_phone,
+        customer_phone=final_phone,
         status="pending"
     )
 
@@ -91,12 +101,79 @@ def create_order(
         listing_id=listing.id,
         quantity=payload.quantity,
         price=listing.price,
-        total_price = listing.price * payload.quantity
+        total_price=listing.price * payload.quantity
     )
 
     db.add(order_item)
 
-    # ✅ STOCK REDUCTION
+    # =====================================================
+    # 🚀 DELIVERY PRICING ENGINE (PRODUCTION SAFE)
+    # =====================================================
+    if payload.delivery_method == "delivery":
+
+        customer_city_id = current_user.city_id
+        package_type = "medium"
+
+        # 🔥 GLOBAL FALLBACK (never zero)
+        BASE_PRICE = 2.50
+        PRICE_PER_KM = 0.8
+        DEFAULT_DISTANCE_KM = 3
+
+        order.distance_km = DEFAULT_DISTANCE_KM
+        order.delivery_price = BASE_PRICE + (PRICE_PER_KM * DEFAULT_DISTANCE_KM)
+        order.estimated_delivery_days = 1
+        order.is_estimated = True
+
+        if merchant.city_id and customer_city_id:
+
+            # 🟢 SAME CITY → INTRA-CITY
+            if merchant.city_id == customer_city_id:
+
+                price = get_intracity_price(merchant, current_user)
+
+                if price:
+                    order.delivery_price = price
+                    order.distance_km = 5  # avg intra-city
+                    order.estimated_delivery_days = 1
+                    order.is_estimated = False
+
+            # 🔵 DIFFERENT CITY → INTER-CITY
+            else:
+
+                result = get_intercity_price(
+                    db,
+                    merchant.city_id,
+                    customer_city_id,
+                    package_type
+                )
+
+                if result:
+                    price, eta_min, eta_max = result
+
+                    order.delivery_price = price
+                    order.estimated_delivery_days = eta_max
+                    order.is_estimated = False
+
+                    pricing = suggest_route_pricing(
+                        db,
+                        merchant.city,
+                        current_user.city
+                    )
+
+                    if pricing:
+                        order.distance_km = pricing["distance_km"]
+
+                else:
+                    # 🔥 FALLBACK for missing routes
+                    handle_missing_route(
+                        db,
+                        merchant.city_id,
+                        customer_city_id
+                    )
+
+    # =====================================================
+    # 📦 STOCK REDUCTION
+    # =====================================================
     if listing.stock_quantity is not None:
         listing.stock_quantity -= payload.quantity
 
@@ -107,7 +184,9 @@ def create_order(
         db.rollback()
         raise HTTPException(status_code=500, detail="Order creation failed")
 
-    # ✅ NON-BLOCKING EMAIL
+    # =====================================================
+    # 📧 NON-BLOCKING EMAIL
+    # =====================================================
     seller_user = db.query(User).filter(
         User.id == merchant.user_id
     ).first()

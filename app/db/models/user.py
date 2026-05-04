@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -21,6 +21,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=False)
     phone_number = Column(String, nullable=True)
+    default_address = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
 
     role = Column(
@@ -38,3 +39,12 @@ class User(Base):
     )
 
     merchant = relationship("Merchant", back_populates="user", uselist=False)
+
+    city_id = Column(
+        Integer,
+        ForeignKey("cities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+    city = relationship("City", lazy="joined")

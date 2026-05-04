@@ -262,7 +262,8 @@ def sandy_chat(
                 if category_name in message:
                     category_listings = (
                         db.query(Listing)
-                        .filter(Listing.category_id == category.id)
+                        .join(SubCategory, Listing.subcategory_id == SubCategory.id)
+                        .filter(SubCategory.category_id == category.id)
                         .limit(MAX_FALLBACK - fallback_added)
                         .all()
                     )
@@ -340,16 +341,26 @@ def sandy_chat(
     # -------------------------------------------------
 
     if any(word in message for word in seller_keywords) or any(word in message for word in help_keywords):
-        return {
-            "intent": "seller_help",
-            "reply": (
-                "To start selling products or services on The Mallyard:\n\n"
-                "1️⃣ Register as a Merchant\n"
-                "2️⃣ Create your store profile\n"
-                "3️⃣ Add product or service listings\n"
-                "4️⃣ Start receiving orders or bookings\n\n"
-                "You can register as a merchant from the merchant signup page."
-            )
+       return {
+           "intent": "seller_help",
+           "reply": (
+               "✨ **Your journey to selling on The Mallyard starts here.**\n\n"
+               "We’ve made the process simple, structured, and premium — just like your brand deserves.\n\n"
+               "➡️ **Step 1: Register as a Merchant**\n"
+               "👉 Click here to register: https://themallyard.com/register/merchant\n\n"
+               "➡️ **Step 2: Complete your account setup**\n"
+               "• Log in with your new credentials\n"
+               "• Access your merchant dashboard\n\n"
+               "➡️ **Step 3: Build your storefront**\n"
+               "• Add your business logo, description, and contact details\n"
+               "• Set your pickup address and city\n\n"
+               "➡️ **Step 4: Start selling — your way**\n"
+               "• Create product or service listings\n"
+               "• Manage orders and bookings from your dashboard\n\n"
+               "💡 **Pro tip:** Use the left sidebar navigation in your dashboard to manage your store efficiently.\n\n"
+               "---\n"
+               "🚀 **Ready to grow?** Tap the link above and begin your journey with The Mallyard today."
+           )
         }
 
     # -------------------------------------------------

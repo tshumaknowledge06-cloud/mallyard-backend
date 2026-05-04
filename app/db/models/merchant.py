@@ -22,6 +22,7 @@ class Merchant(Base):
 
     merchant_type = Column(String, nullable=False)
     location = Column(String, nullable=True)
+    pickup_address = Column(String, nullable=True)
     contact_phone = Column(String, nullable=True)
 
     # 🔥 Payment configuration
@@ -55,3 +56,12 @@ class Merchant(Base):
         back_populates="merchant",
         cascade="all, delete"
     )
+
+    city_id = Column(
+        Integer,
+        ForeignKey("cities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+    city = relationship("City", lazy="joined")

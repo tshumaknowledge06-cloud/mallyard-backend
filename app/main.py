@@ -29,12 +29,14 @@ from app.api.routes import trending
 from app.api.routes import admin_analytics
 from app.api.routes import cart
 from app.api.routes import review
+from app.api.routes import admin_route_management
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import JSONResponse
 from app.api.routes import seed
+from app.api.routes import admin_city_management
 
 app = FastAPI(title="The Mallyard API")
 
@@ -65,18 +67,33 @@ app.add_middleware(
 from fastapi import Request
 from fastapi.responses import Response
 
+ENV = os.getenv("ENV", "dev")
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response: Response = await call_next(request)
 
+    # Always safe headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+
+    # 🚀 APPLY CSP ONLY OUTSIDE SWAGGER
+    if not (
+        request.url.path.startswith("/docs") or
+        request.url.path.startswith("/openapi") or
+        request.url.path.startswith("/redoc")
+    ):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "img-src 'self' data: https:; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'"
+        )
 
     return response
-
+    
 # ✅ Ensure upload folders exist
 os.makedirs("uploads/listings", exist_ok=True)
 os.makedirs("uploads/delivery", exist_ok=True)
@@ -105,7 +122,9 @@ app.include_router(trending.router)
 app.include_router(admin_analytics.router)
 app.include_router(cart.router)
 app.include_router(review.router)
+app.include_router(admin_route_management.router, prefix="/admin")
 app.include_router(seed.router, prefix="/admin", tags=["Admin"])
+app.include_router(admin_city_management.router)
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request, exc):
