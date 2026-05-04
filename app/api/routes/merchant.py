@@ -266,7 +266,25 @@ def get_pending_merchants(
         .all()
     )
 
-    return pending_merchants
+    response = []
+    for m in pending_merchants:  # ✅ Fixed: iterate over pending_merchants, use 'm' as variable
+        response.append({
+            "id": m.id,  # ✅ Fixed: use 'm.id'
+            "business_name": m.business_name,  # ✅ Fixed: use 'm.business_name'
+            "description": m.description,  # ✅ Fixed: use 'm.description'
+            "merchant_type": m.merchant_type,  # ✅ Fixed: use 'm.merchant_type'
+            "location": m.location,  # ✅ Fixed: use 'm.location'
+            "contact_phone": m.contact_phone,  # ✅ Fixed: use 'm.contact_phone'
+            "pickup_address": m.pickup_address,  # ✅ Fixed: use 'm.pickup_address'
+            "city_id": m.city_id if m.city_id else 0,  # ✅ Fixed: use 'm.city_id'
+            "city_name": m.city.name if m.city else None,  # ✅ Fixed: use 'm.city'
+            "status": m.status,  # ✅ Fixed: use 'm.status'
+            "user_id": m.user_id,  # ✅ Fixed: use 'm.user_id'
+            "logo_url": m.logo_url,  # ✅ Fixed: use 'm.logo_url'
+            "created_at": m.created_at,  # ✅ Fixed: use 'm.created_at'
+        })
+
+    return response
 
 # -------------------------
 # Public Merchant Storefront
