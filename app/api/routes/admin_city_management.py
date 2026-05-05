@@ -65,3 +65,28 @@ def approve_city(
     db.refresh(city)
 
     return city
+
+@router.get("/cities")
+def get_approved_cities(
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint to get all approved cities
+    """
+    cities = db.query(City).filter(
+        City.is_active == True
+    ).order_by(City.name).all()
+    
+    # Convert to list of dicts without needing a schema
+    return [
+        {
+            "id": city.id,
+            "name": city.name,
+            "country": city.country,
+            "latitude": city.latitude,
+            "longitude": city.longitude,
+            "is_active": city.is_active,
+        }
+        for city in cities
+    ]
+

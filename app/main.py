@@ -122,7 +122,7 @@ app.include_router(trending.router)
 app.include_router(admin_analytics.router)
 app.include_router(cart.router)
 app.include_router(review.router)
-app.include_router(admin_route_management.router, prefix="/admin")
+app.include_router(admin_route_management.router)
 app.include_router(seed.router, prefix="/admin", tags=["Admin"])
 app.include_router(admin_city_management.router)
 
