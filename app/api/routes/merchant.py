@@ -92,8 +92,8 @@ def register_merchant(
          "location": merchant.location,
          "contact_phone": merchant.contact_phone,
          "pickup_address": merchant.pickup_address,
-         "city_id": merchant.city_id,
-         "city_name": merchant.city.name if merchant.city else None,  # ✅ Add this
+         "city_id": merchant.city_id if merchant.city_id else 0,
+         "city_name": merchant.city.name if merchant.city else None,  
          "status": merchant.status,
          "user_id": merchant.user_id,
 }
