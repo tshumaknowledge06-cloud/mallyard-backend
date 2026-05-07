@@ -96,6 +96,7 @@ def register_merchant(
          "city_name": merchant.city.name if merchant.city else None,  
          "status": merchant.status,
          "user_id": merchant.user_id,
+         "created_at": merchant.created_at,  
 }
 
 
