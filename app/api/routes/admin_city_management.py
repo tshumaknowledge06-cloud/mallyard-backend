@@ -6,6 +6,12 @@ from app.db.models.city_request import CityRequest
 from app.db.models.city import City
 from app.db.models.user import User
 from app.api.deps import get_current_user  
+from pydantic import BaseModel
+
+class CityApproval(BaseModel):
+    country: str
+    latitude: float
+    longitude: float
 
 router = APIRouter(prefix="/admin/cities", tags=["Admin Cities"])
 
@@ -29,9 +35,7 @@ def get_city_requests(
 @router.post("/approve/{request_id}")
 def approve_city(
     request_id: int,
-    country: str,
-    latitude: float,
-    longitude: float,
+    payload: CityApproval,  
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -47,20 +51,17 @@ def approve_city(
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    # Create real city
+    # Create real city using payload values
     city = City(
         name=req.name,
-        country=country,
-        latitude=latitude,
-        longitude=longitude,
+        country=payload.country,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
         is_active=True
     )
 
     db.add(city)
-
-    # Remove request
     db.delete(req)
-
     db.commit()
     db.refresh(city)
 
