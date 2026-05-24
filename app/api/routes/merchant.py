@@ -434,3 +434,24 @@ def upload_merchant_logo(
         "message": "Logo uploaded successfully",
         "logo_url": merchant.logo_url
     }
+
+
+@router.get("/approved")
+def get_approved_merchants(
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint to get all approved merchants for the featured merchants section
+    """
+    merchants = db.query(Merchant).filter(
+        Merchant.status == "approved"
+    ).all()
+    
+    return [
+        {
+            "id": merchant.id,
+            "business_name": merchant.business_name,
+            "logo_url": merchant.logo_url
+        }
+        for merchant in merchants
+    ]
