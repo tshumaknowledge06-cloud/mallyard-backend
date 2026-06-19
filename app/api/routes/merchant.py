@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+import random 
 
 from app.db.session import get_db
 from app.db.models.user import User
@@ -435,7 +436,6 @@ def upload_merchant_logo(
         "logo_url": merchant.logo_url
     }
 
-
 @router.get("/approved")
 def get_approved_merchants(
     db: Session = Depends(get_db)
@@ -447,7 +447,7 @@ def get_approved_merchants(
         Merchant.status == "approved"
     ).all()
     
-    return [
+    result = [
         {
             "id": merchant.id,
             "business_name": merchant.business_name,
@@ -455,3 +455,7 @@ def get_approved_merchants(
         }
         for merchant in merchants
     ]
+    
+    random.shuffle(result)
+    
+    return result
