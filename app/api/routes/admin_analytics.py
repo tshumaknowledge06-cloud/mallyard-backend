@@ -9,6 +9,7 @@ from app.db.models.user import User
 from app.db.models.order import Order
 from app.db.models.delivery_request import DeliveryRequest
 from app.db.models.delivery_match import DeliveryMatch
+from app.db.models.booking import Booking  
 
 router = APIRouter(
     prefix="/admin/analytics",
@@ -35,6 +36,24 @@ def get_admin_analytics(
     active_customers = (
         db.query(func.count(distinct(Order.buyer_id)))
         .filter(Order.created_at >= thirty_days_ago)
+        .scalar()
+    ) or 0
+
+    # ----------------------------------------
+    # Distinct users who created bookings in last 30 days
+    # ----------------------------------------
+    active_bookers = (
+        db.query(func.count(distinct(Booking.user_id)))
+        .filter(Booking.created_at >= thirty_days_ago)
+        .scalar()
+    ) or 0
+
+    # ----------------------------------------
+    # Total bookings created in last 30 days
+    # ----------------------------------------
+    service_bookings = (
+        db.query(func.count(Booking.id))
+        .filter(Booking.created_at >= thirty_days_ago)
         .scalar()
     ) or 0
 
@@ -80,8 +99,18 @@ def get_admin_analytics(
         else 0.0
     )
 
+    # ----------------------------------------
+    # Count of all registered users
+    # ----------------------------------------
+    total_users = (
+        db.query(func.count(User.id)).scalar()
+    ) or 0
+
     return {
         "active_customers": active_customers,
         "orders_per_week": orders_per_week,
         "match_success_rate": match_success_rate,
+        "active_bookers": active_bookers,        
+        "service_bookings": service_bookings,    
+        "total_users": total_users,              
     }

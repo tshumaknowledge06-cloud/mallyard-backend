@@ -126,19 +126,18 @@ def add_route_pricing(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    # ✅ FIX 6: Validate package_type
+    # ✅ Validate package_type
     if package_type not in VALID_PACKAGE_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid package type. Must be one of: {', '.join(VALID_PACKAGE_TYPES)}"
         )
 
-    # ✅ FIX 2: Use filter().first() instead of .get()
     route = db.query(Route).filter(Route.id == route_id).first()
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
 
-    # ✅ FIX 5: Check for duplicate pricing
+    # ✅ Check for duplicate pricing
     existing = db.query(RoutePricing).filter_by(
         route_id=route_id,
         package_type=package_type
@@ -163,6 +162,74 @@ def add_route_pricing(
     return pricing
 
 
+@router.put("/routes/{route_id}/pricing")
+def update_route_pricing(
+    route_id: int,
+    small: float | None = None,
+    medium: float | None = None,
+    large: float | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # ✅ Admin check
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # ✅ Check route exists
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
+    # ✅ Track which packages are being updated
+    updates = []
+    if small is not None:
+        updates.append(("small", small))
+    if medium is not None:
+        updates.append(("medium", medium))
+    if large is not None:
+        updates.append(("large", large))
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No pricing values provided")
+    
+    # ✅ Update or create pricing for each package type
+    for package_type, price in updates:
+        existing = db.query(RoutePricing).filter_by(
+            route_id=route_id,
+            package_type=package_type
+        ).first()
+        
+        if existing:
+            # ✅ Update existing
+            existing.base_price = price
+        else:
+            # ✅ Create new if doesn't exist
+            new_pricing = RoutePricing(
+                route_id=route_id,
+                package_type=package_type,
+                base_price=price
+            )
+            db.add(new_pricing)
+    
+    db.commit()
+    
+    # ✅ Return updated pricing
+    updated_pricing = db.query(RoutePricing).filter(
+        RoutePricing.route_id == route_id
+    ).all()
+    
+    return {
+        "message": "Pricing updated successfully",
+        "pricing": [
+            {
+                "package_type": p.package_type,
+                "base_price": p.base_price
+            }
+            for p in updated_pricing
+        ]
+    }
+
+
 @router.patch("/routes/{route_id}/toggle")
 def toggle_route(
     route_id: int,
@@ -173,7 +240,6 @@ def toggle_route(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    # ✅ FIX 2: Use filter().first() instead of .get()
     route = db.query(Route).filter(Route.id == route_id).first()
 
     if not route:
