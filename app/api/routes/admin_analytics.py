@@ -43,7 +43,7 @@ def get_admin_analytics(
     # Distinct users who created bookings in last 30 days
     # ----------------------------------------
     active_bookers = (
-        db.query(func.count(distinct(Booking.user_id)))
+        db.query(func.count(distinct(Booking.customer_id)))
         .filter(Booking.created_at >= thirty_days_ago)
         .scalar()
     ) or 0
