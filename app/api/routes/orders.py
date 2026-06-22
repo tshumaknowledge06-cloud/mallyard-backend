@@ -86,6 +86,7 @@ def create_order(
         buyer_id=current_user.id,
         merchant_id=merchant.id,
         listing_id=listing.id,
+        order_specifications=payload.order_specifications,
         delivery_method=payload.delivery_method,
         dropoff_address=final_address,
         delivery_instructions=payload.delivery_instructions,

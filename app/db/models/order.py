@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -22,7 +22,6 @@ class Order(Base):
         nullable=False
     )
 
-    # ✅ ADD THIS (CRITICAL)
     listing_id = Column(
         Integer,
         ForeignKey("listings.id", ondelete="CASCADE"),
@@ -40,9 +39,10 @@ class Order(Base):
         server_default=func.now(),
         nullable=False
     )
-
-    delivery_method = Column(String, nullable=True)  # onsite | delivery
-    dropoff_address = Column(String, nullable=True)  # ✅ needed for delivery
+    
+    order_specifications = Column(Text, nullable=True)
+    delivery_method = Column(String, nullable=True)  
+    dropoff_address = Column(String, nullable=True)  
     delivery_instructions = Column(String, nullable=True)
     customer_phone = Column(String, nullable=True)
     delivery_price = Column(Float, nullable=True)
@@ -52,7 +52,7 @@ class Order(Base):
     # Relationships
     buyer = relationship("User")
     merchant = relationship("Merchant")
-    listing = relationship("Listing")  # ✅ NEW
+    listing = relationship("Listing")  
     items = relationship(
         "OrderItem",
         back_populates="order",

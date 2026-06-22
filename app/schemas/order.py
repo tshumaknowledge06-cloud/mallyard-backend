@@ -9,6 +9,7 @@ from typing import Optional, List  # ✅ FIX: import List
 class OrderCreate(BaseModel):
     listing_id: int
     quantity: int
+    order_specifications: Optional[str] = None
     delivery_method: Optional[str] = None
     dropoff_address: Optional[str] = None
     delivery_instructions: Optional[str] = None
@@ -32,6 +33,7 @@ class OrderOut(BaseModel):
     merchant_id: int
     listing_id: int
     status: str
+    order_specifications: Optional[str] = None
     delivery_method: Optional[str]
     dropoff_address: Optional[str]
     delivery_instructions: Optional[str]
@@ -52,5 +54,5 @@ class OrderOut(BaseModel):
         from_attributes = True
 
 
-# ✅ VERY IMPORTANT (Pydantic v2 safety)
+# (Pydantic v2 safety)
 OrderOut.model_rebuild()
