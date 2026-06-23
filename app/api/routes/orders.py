@@ -358,6 +358,42 @@ def get_my_purchases(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(Order).filter(
+    orders = db.query(Order).filter(
         Order.buyer_id == current_user.id
     ).order_by(Order.id.desc()).all()
+    
+    # 🔥 ENRICH WITH ORDER ITEM DATA
+    result = []
+    
+    for order in orders:
+        # Get the order item for this order
+        item = db.query(OrderItem).filter(
+            OrderItem.order_id == order.id
+        ).first()
+        
+        # Get the listing for media
+        listing = db.query(Listing).filter(
+            Listing.id == order.listing_id
+        ).first()
+        
+        result.append({
+            "id": order.id,
+            "buyer_id": order.buyer_id,
+            "merchant_id": order.merchant_id,
+            "listing_id": order.listing_id,
+            "status": order.status,
+            "order_specifications": order.order_specifications,
+            "delivery_method": order.delivery_method,
+            "dropoff_address": order.dropoff_address,
+            "delivery_instructions": order.delivery_instructions,
+            "customer_phone": order.customer_phone,
+            "created_at": order.created_at,
+            "quantity": item.quantity if item else 1,
+            "total_price": (item.price * item.quantity) if item else None,
+            "delivery_price": order.delivery_price,
+            "estimated_delivery_days": order.estimated_delivery_days,
+            "image_urls": listing.image_urls if listing else None,
+            "video_url": listing.video_url if listing else None,
+        })
+    
+    return result
