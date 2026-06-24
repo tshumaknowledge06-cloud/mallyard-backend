@@ -117,8 +117,8 @@ def create_order(
 
         # 🔥 GLOBAL FALLBACK (never zero)
         BASE_PRICE = 2.50
-        PRICE_PER_KM = 0.8
-        DEFAULT_DISTANCE_KM = 3
+        PRICE_PER_KM = 0.5
+        DEFAULT_DISTANCE_KM = 2
 
         order.distance_km = DEFAULT_DISTANCE_KM
         order.delivery_price = BASE_PRICE + (PRICE_PER_KM * DEFAULT_DISTANCE_KM)
