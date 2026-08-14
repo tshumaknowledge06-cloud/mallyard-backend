@@ -5,9 +5,11 @@ from app.db.session import get_db
 from app.db.models.review import Review
 from app.db.models.user import User
 from app.db.models.listing import Listing
+from app.db.models.merchant import Merchant
 
 from app.schemas.review import ReviewCreate, ReviewOut
 from app.api.deps import get_current_user
+from app.services.notifications import create_notification
 
 router = APIRouter(
     prefix="/reviews",
@@ -52,6 +54,21 @@ def create_review(
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create review")
+
+    # 🔔 NOTIFICATION: New Review to Merchant
+    merchant = db.query(Merchant).filter(
+        Merchant.id == listing.merchant_id
+    ).first()
+
+    if merchant:
+        create_notification(
+            db=db,
+            user_id=merchant.user_id,
+            title="New Review",
+            message=f"A customer reviewed your listing: {listing.name}",
+            notification_type="review",
+            related_id=review.id,
+        )
 
     return ReviewOut(
         id=review.id,

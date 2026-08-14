@@ -12,14 +12,29 @@ from app.api.deps import get_current_user
 from app.core.security import (
     hash_password,
     verify_password,
-    create_access_token,   # ✅ IMPORT FIX
+    create_access_token,  
 )
 from app.core.config import settings
-from app.schemas.auth import GoogleAuthSchema
+from app.schemas.auth import GoogleAuthSchema, Token
+from app.core.security import create_access_token, verify_google_token, hash_password
 from slowapi.util import get_remote_address
 from fastapi import Request
 from slowapi import Limiter
+from app.db.models.user_role import UserRole
 import time
+
+from app.core.email import send_email
+from datetime import datetime, timedelta, timezone
+import secrets
+
+from app.services.notifications import create_notification
+from app.core.email_templates import password_reset_email
+from app.db.models.password_reset_token import PasswordResetToken
+from app.schemas.password_reset import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    PasswordResetResponse,
+)
 
 router = APIRouter(
     prefix="/auth",
@@ -36,12 +51,89 @@ def register(
     user_in: UserCreate,
     db: Session = Depends(get_db)
 ):
-    existing_user = db.query(User).filter(User.email == user_in.email).first()
+    existing_user = (
+        db.query(User)
+        .filter(User.email == user_in.email)
+        .first()
+    )
+
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+        # 🔐 Verify password for existing account
+        if not verify_password(
+            user_in.password,
+            existing_user.hashed_password,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect password for this account.",
+            )
+
+        existing_role = next(
+            (
+                r
+                for r in existing_user.roles
+                if r.role == user_in.role
+            ),
+            None,
         )
+
+        if existing_role:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You already have this workspace."
+            )
+
+        # 🔥 UPDATE EMPTY PROFILE FIELDS
+        if (
+            (existing_user.full_name is None or existing_user.full_name.strip() == "")
+            and user_in.full_name
+        ):
+            existing_user.full_name = user_in.full_name
+
+        if existing_user.phone_number is None and user_in.phone_number:
+            existing_user.phone_number = user_in.phone_number
+
+        if existing_user.default_address is None and user_in.default_address:
+            existing_user.default_address = user_in.default_address
+
+        # 🔥 NORMALIZE INPUT FOR CITY
+        city_name = user_in.city_name.strip().lower() if user_in.city_name else None
+        city_id = None
+
+        if city_name:
+            city_id = resolve_city(db, city_name)
+
+            if not city_id:
+                # 🔥 UPSERT CITY REQUEST (normalized)
+                existing_request = db.query(CityRequest).filter(
+                    CityRequest.name == city_name
+                ).first()
+
+                if existing_request:
+                    existing_request.request_count += 1
+                else:
+                    new_request = CityRequest(name=city_name)
+                    db.add(new_request)
+
+        if existing_user.city_id is None and city_id:
+            existing_user.city_id = city_id
+
+        # Existing user - just add new role
+        db.add(
+            UserRole(
+                user_id=existing_user.id,
+                role=user_in.role,
+            )
+        )
+        db.commit()
+
+        return {
+            "id": existing_user.id,
+            "email": existing_user.email,
+            "full_name": existing_user.full_name,
+            "role": user_in.role,
+            "city_supported": True if existing_user.city_id else False,
+        }
 
     # 🔥 NORMALIZE INPUT
     city_name = user_in.city_name.strip().lower() if user_in.city_name else None
@@ -72,11 +164,20 @@ def register(
         hashed_password=hashed_password,
         phone_number=user_in.phone_number,
         default_address=user_in.default_address,
-        city_id=city_id,  # ✅ FIXED (no fallback)
-        role=user_in.role if user_in.role in ["customer", "seller"] else "customer"
+        city_id=city_id,  
+        role=user_in.role
     )
 
     db.add(new_user)
+    db.flush()
+
+    db.add(
+        UserRole(
+            user_id=new_user.id,
+            role=new_user.role,
+        )
+    )
+
     db.commit()
     db.refresh(new_user)
 
@@ -85,8 +186,9 @@ def register(
         "email": new_user.email,
         "full_name": new_user.full_name,
         "role": new_user.role,
-        "city_supported": True if city_id else False
+        "city_supported": True if city_id else False,
     }
+
 
 # -------------------------
 # Login
@@ -117,34 +219,240 @@ def login(
         expires_delta=access_token_expires,
     )
 
+    roles = [
+        user_role.role
+        for user_role in user.roles
+    ]
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "role": user.role
+        "roles": roles,
     }
 
 
-@router.post("/google")
-def google_auth(payload: GoogleAuthSchema, db: Session = Depends(get_db)):
+# -----------------------------------------
+# Forgot Password
+# -----------------------------------------
 
-    user = db.query(User).filter(User.email == payload.email).first()
+@router.post(
+    "/forgot-password",
+    response_model=PasswordResetResponse,
+)
+def forgot_password(
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+
+    user = (
+        db.query(User)
+        .filter(User.email == data.email)
+        .first()
+    )
+
+    # Never reveal whether the email exists.
+    if not user:
+        return PasswordResetResponse(
+            message="If an account exists, password reset instructions have been sent."
+        )
+
+    token = secrets.token_urlsafe(48)
+
+    expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(hours=1)
+    )
+
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token=token,
+            expires_at=expires_at,
+        )
+    )
+
+    db.commit()
+
+    # 🔔 NOTIFICATION: Password Reset Requested
+    create_notification(
+        db=db,
+        user_id=user.id,
+        title="Password Reset Requested",
+        message="A password reset was requested for your account.",
+        notification_type="security",
+        related_id=None,
+    )
+
+    # Send the reset email
+    try:
+        reset_link = f"mallyard://reset-password?token={token}"
+        send_email(
+            to=user.email,
+            subject="Reset your Mallyard password",
+            body=password_reset_email(reset_link),
+        )
+    except Exception:
+        pass
+
+    return PasswordResetResponse(
+        message="If an account exists, password reset instructions have been sent."
+    )
+
+
+# -----------------------------------------
+# Reset Password
+# -----------------------------------------
+
+@router.post(
+    "/reset-password",
+    response_model=PasswordResetResponse,
+)
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+
+    reset_token = (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.token == data.token,
+            PasswordResetToken.used == False,
+        )
+        .first()
+    )
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired reset token.",
+        )
+
+    if reset_token.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=400,
+            detail="Reset token has expired.",
+        )
+
+    user = (
+        db.query(User)
+        .filter(User.id == reset_token.user_id)
+        .first()
+    )
 
     if not user:
-        user = User(
-            email=payload.email,
-            full_name=payload.full_name,
-            role=payload.role,
-            hashed_password=None  # ✅ No password
+        raise HTTPException(
+            status_code=404,
+            detail="User not found.",
         )
+
+    # Update password
+    user.hashed_password = hash_password(
+        data.new_password
+    )
+
+    # Mark token as used
+    reset_token.used = True
+
+    db.commit()
+
+    # 🔔 NOTIFICATION: Password Changed
+    create_notification(
+        db=db,
+        user_id=user.id,
+        title="Password Changed",
+        message="Your password has been changed successfully.",
+        notification_type="security",
+        related_id=None,
+    )
+
+    return PasswordResetResponse(
+        message="Password reset successful."
+    )
+
+# =========================================================
+# GOOGLE AUTH
+# =========================================================
+@router.post("/google", response_model=Token)
+def google_auth(
+    payload: GoogleAuthSchema,
+    db: Session = Depends(get_db),
+):
+    # Step 1: Verify the Google token with try/except
+    try:
+        google_user = verify_google_token(payload.id_token)
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid Google token",
+        )
+    
+    # Step 2: Extract email and name with .get()
+    email = google_user.get("email")
+    full_name = google_user.get("name")
+    
+    # Step 3: Verify email is present
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Google account has no email.",
+        )
+    
+    # Step 4: Verify email is verified by Google
+    if not google_user.get("email_verified"):
+        raise HTTPException(
+            status_code=401,
+            detail="Google email is not verified.",
+        )
+    
+    # Step 5: Find existing user
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .first()
+    )
+    
+    # Step 6: Create user if they don't exist
+    if not user:
+        # Generate a secure random password for Google users
+        random_password = secrets.token_urlsafe(32)
+        hashed_password = hash_password(random_password)
+        
+        user = User(
+            email=email,
+            full_name=full_name or "Google User",
+            hashed_password=hashed_password,
+            is_verified=True,  # Google has already verified the email
+        )
+        
         db.add(user)
+        db.flush()
+        
+        db.add(
+            UserRole(
+                user_id=user.id,
+                role="customer",  # Use string directly like register endpoint
+            )
+        )
+        
         db.commit()
         db.refresh(user)
-
+    
+    # Step 7: Generate JWT token
+    access_token = create_access_token(
+        subject=str(user.id)
+    )
+    
+    # Step 8: Collect workspaces
+    roles = [
+        user_role.role
+        for user_role in user.roles
+    ]
+    
+    # Step 9: Return same response as /login
     return {
-        "id": user.id,
-        "email": user.email,
-        "full_name": user.full_name,
-        "role": user.role
+        "access_token": access_token,
+        "token_type": "bearer",
+        "roles": roles,
     }
 
 @router.put("/me")

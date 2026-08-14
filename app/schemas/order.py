@@ -29,6 +29,7 @@ class OrderStatusUpdate(BaseModel):
 # -----------------------------------------
 class OrderOut(BaseModel):
     id: int
+    listing_name: Optional[str] = None
     buyer_id: int
     merchant_id: int
     listing_id: int

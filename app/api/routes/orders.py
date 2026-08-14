@@ -19,6 +19,7 @@ from app.services.delivery_pricing import (
 )
 from app.services.delivery_pricing import get_intracity_price
 from app.services.delivery_pricing import suggest_route_pricing
+from app.services.notifications import create_notification
 
 router = APIRouter(
     prefix="/orders",
@@ -217,6 +218,16 @@ Build trust. Close fast.
         except Exception:
             pass
 
+    # 🔔 NOTIFICATION: New Order to Merchant
+    create_notification(
+        db=db,
+        user_id=merchant.user_id,
+        title="New Order",
+        message=f"You received Order #{order.id}.",
+        notification_type="order",
+        related_id=order.id,
+    )
+
     return order
 
 
@@ -254,6 +265,26 @@ def update_order_status(
     db.commit()
     db.refresh(order)
 
+    # 🔔 NOTIFICATION: Order Confirmed or Rejected
+    if new_status == "accepted":
+        create_notification(
+            db=db,
+            user_id=order.buyer_id,
+            title="Order Confirmed",
+            message="Your order has been confirmed by the seller.",
+            notification_type="order",
+            related_id=order.id,
+        )
+    elif new_status == "rejected":
+        create_notification(
+            db=db,
+            user_id=order.buyer_id,
+            title="Order Cancelled",
+            message="Unfortunately the seller declined your order.",
+            notification_type="order",
+            related_id=order.id,
+        )
+
     # =====================================================
     # AUTO DELIVERY FLOW TRIGGER
     # =====================================================
@@ -289,7 +320,6 @@ def update_order_status(
             db.refresh(order)
 
     return order
-
 
 # =========================================================
 # GET ORDERS
@@ -378,6 +408,7 @@ def get_my_purchases(
         
         result.append({
             "id": order.id,
+            "listing_name": listing.name if listing else None,
             "buyer_id": order.buyer_id,
             "merchant_id": order.merchant_id,
             "listing_id": order.listing_id,

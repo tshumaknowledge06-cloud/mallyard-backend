@@ -39,12 +39,28 @@ class User(Base):
     )
 
     merchant = relationship("Merchant", back_populates="user", uselist=False)
-
+    
+    roles = relationship(
+        "UserRole",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     city_id = Column(
         Integer,
         ForeignKey("cities.id", ondelete="SET NULL"),
         nullable=True,
         index=True
+    )
+
+    password_reset_tokens = relationship(
+        "PasswordResetToken",
+        cascade="all, delete-orphan",
+    )
+
+    notifications = relationship(
+       "Notification",
+       back_populates="user",
+       cascade="all, delete-orphan",
     )
 
     city = relationship("City", lazy="joined")

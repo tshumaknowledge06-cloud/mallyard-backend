@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
+from fastapi import HTTPException
 from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
+from google.oauth2 import id_token
+from google.auth.transport import requests
 
 from app.core.config import settings
 
@@ -73,7 +76,50 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 
     except JWTError:
         return None
+
+
+# -------------------------
+# Google Token Verification
+# -------------------------
+
+def verify_google_token(token: str) -> dict:
+    """
+    Verify a Google OAuth ID token and return user info.
     
+    Returns:
+        dict: Contains 'email', 'name', 'picture', 'email_verified' etc.
+    
+    Raises:
+        HTTPException: If the token is invalid
+    """
+    try:
+        # Verify the token with Google
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            requests.Request(),
+            settings.GOOGLE_CLIENT_ID
+        )
+        
+        # Return user info
+        return {
+            "email": idinfo.get("email"),
+            "name": idinfo.get("name"),
+            "picture": idinfo.get("picture"),
+            "email_verified": idinfo.get("email_verified", False),
+        }
+    except ValueError:
+        # Invalid token
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid Google token",
+        )
+    except Exception:
+        # Other errors
+        raise HTTPException(
+            status_code=500,
+            detail="Google verification failed",
+        )
+
+
 # Backward compatibility
 get_password_hash = hash_password
-

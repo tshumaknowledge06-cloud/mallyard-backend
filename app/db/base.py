@@ -13,9 +13,10 @@ from app.db.models.order_item import OrderItem
 from app.db.models.cart_item import CartItem
 from app.db.models.review import Review
 from app.db.models.city_request import CityRequest
-
-
-
+from app.db.models.user_role import UserRole
+from app.db.models.password_reset_token import PasswordResetToken
+from app.db.models.notification import Notification
+from app.db.models.booking import Booking
 
 
 

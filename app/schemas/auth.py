@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, constr
 from app.db.models.user import Role
 from pydantic import field_validator
 from typing import Optional
+from typing import List
 
 
 class UserCreate(BaseModel):
@@ -48,7 +49,7 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    role: Role
+    roles: List[Role]
 
 
 class UserOut(BaseModel):
@@ -61,9 +62,7 @@ class UserOut(BaseModel):
 
 
 class GoogleAuthSchema(BaseModel):
-    email: EmailStr
-    full_name: str
-    role: str
+    id_token: str
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None

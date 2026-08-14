@@ -9,6 +9,7 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.db.models.merchant import Merchant
 from app.core.email import send_email
+from app.services.notifications import create_notification
 
 router = APIRouter()
 
@@ -86,7 +87,7 @@ Booking ID: {new_booking.id}
 
 A customer is waiting for you right now.
 
-Don’t lose the moment — fast response builds trust and wins repeat business.
+Don't lose the moment — fast response builds trust and wins repeat business.
 
 👉 Open your dashboard:
 https://themallyard.com/login/merchant
@@ -98,6 +99,16 @@ Stay sharp. Stay winning.
             )
         except Exception:
             pass
+
+    # 🔔 NOTIFICATION: New Booking to Seller
+    create_notification(
+        db=db,
+        user_id=merchant.user_id,
+        title="New Booking",
+        message="A customer requested a booking.",
+        notification_type="booking",
+        related_id=new_booking.id,
+    )
 
     return new_booking
 
@@ -145,6 +156,7 @@ def get_bookings(
 
     else:
         raise HTTPException(status_code=403, detail="Unauthorized role")
+
 
 # ---------------------------------------------------
 # UPDATE BOOKING
@@ -197,17 +209,86 @@ def update_booking(
     db.commit()
     db.refresh(booking)
 
+    # 🔔 NOTIFICATION: Booking Accepted or Rejected
+    if update.status == "accepted":
+        create_notification(
+            db=db,
+            user_id=booking.customer_id,
+            title="Booking Accepted",
+            message="Your booking has been accepted.",
+            notification_type="booking",
+            related_id=booking.id,
+        )
+    elif update.status == "rejected":
+        create_notification(
+            db=db,
+            user_id=booking.customer_id,
+            title="Booking Rejected",
+            message="Your booking request was declined.",
+            notification_type="booking",
+            related_id=booking.id,
+        )
+
     return booking
 
 
 # ---------------------------------------------------
 # GET MY BOOKINGS (ALL ROLES AS CUSTOMERS)
 # ---------------------------------------------------
-@router.get("/bookings/my-bookings", response_model=list[BookingOut])
+
+@router.get(
+    "/bookings/my-bookings",
+    response_model=list[BookingOut]
+)
 def get_my_bookings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(Booking).filter(
-        Booking.customer_id == current_user.id
-    ).order_by(Booking.created_at.desc()).all()
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.customer_id == current_user.id
+        )
+        .order_by(
+            Booking.created_at.desc()
+        )
+        .all()
+    )
+
+    result = []
+
+    for booking in bookings:
+        listing = booking.listing
+
+        if not listing:
+            continue
+
+        merchant = listing.merchant
+
+        if not merchant:
+            continue
+
+        result.append(
+            BookingOut(
+                id=booking.id,
+                listing_id=booking.listing_id,
+                customer_id=booking.customer_id,
+                seller_id=booking.seller_id,
+
+                description=booking.description,
+                contact_number=booking.contact_number,
+                preferred_time=booking.preferred_time,
+
+                status=booking.status,
+                created_at=booking.created_at,
+
+                listing_name=listing.name,
+                image_urls=listing.image_urls or [],
+                price=listing.price,
+                currency=listing.currency,
+
+                business_name=merchant.business_name,
+            )
+        )
+
+    return result

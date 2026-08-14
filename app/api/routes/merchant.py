@@ -13,6 +13,7 @@ from fastapi import UploadFile, File
 from app.utils.file_upload import upload_file
 from app.services.city_service import resolve_city
 from app.db.models.city_request import CityRequest
+from app.services.notifications import create_notification
 
 router = APIRouter(
     prefix="/merchants",
@@ -243,8 +244,17 @@ def approve_merchant(
     db.commit()
     db.refresh(merchant)
 
-    return merchant
+    # 🔔 NOTIFICATION: Merchant Verification Approved
+    create_notification(
+        db=db,
+        user_id=merchant.user_id,
+        title="Store Verified",
+        message="Congratulations! Your store has been verified.",
+        notification_type="merchant",
+        related_id=merchant.id,
+    )
 
+    return merchant
 # -------------------------
 # Get All Pending Merchants (Admin Only)
 # -------------------------
@@ -381,6 +391,16 @@ def reject_merchant(
 
     db.commit()
     db.refresh(merchant)
+
+    # 🔔 NOTIFICATION: Merchant Verification Rejected
+    create_notification(
+        db=db,
+        user_id=merchant.user_id,
+        title="Store Verification Update",
+        message="Your store verification requires additional information. Please check your dashboard.",
+        notification_type="merchant",
+        related_id=merchant.id,
+    )
 
     return merchant
 

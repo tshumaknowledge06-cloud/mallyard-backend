@@ -34,6 +34,8 @@ class DeliveryPartnerOut(BaseModel):
     profile_image_url: Optional[str] = None
     vehicle_image_url: Optional[str] = None
 
+    license_number: Optional[str] = None
+  
     created_at: datetime
 
     class Config:

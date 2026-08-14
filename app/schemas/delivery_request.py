@@ -11,13 +11,15 @@ class DeliveryRequestOut(BaseModel):
 
     delivery_instructions: Optional[str]
 
-    # 🔥 NEW
     delivery_price: Optional[float]
     estimated_delivery_days: Optional[int]
     distance_km: Optional [float] = None
 
     status: str
     created_at: datetime
+
+    driver_name: str | None = None
+    driver_phone: str | None = None
 
     class Config:
         from_attributes = True

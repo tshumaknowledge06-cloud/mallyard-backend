@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from typing import List, Optional
 
 from app.db.session import get_db
@@ -18,6 +18,7 @@ from app.schemas.delivery_request import (
 )
 
 from app.api.deps import get_current_user
+from app.services.notifications import create_notification
 
 router = APIRouter(
     prefix="/delivery-requests",
@@ -71,6 +72,7 @@ def submit_pickup_details(
 
     return delivery_request
 
+
 # ----------------------------------------
 # Admin: View All Delivery Requests
 # ----------------------------------------
@@ -112,6 +114,7 @@ def get_all_delivery_requests(
         })
 
     return responses
+
 
 # ----------------------------------------
 # Admin completes delivery
@@ -191,17 +194,25 @@ def complete_delivery(
         "partner_completed_deliveries": partner.completed_deliveries
     }
 
+
 # ----------------------------------------
 # Seller views own delivery requests
 # ----------------------------------------
-@router.get("/seller", response_model=List[DeliveryRequestOut])
+
+@router.get(
+    "/seller",
+    response_model=List[DeliveryRequestOut]
+)
 def get_seller_delivery_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
 
     if current_user.role != "seller":
-        raise HTTPException(status_code=403, detail="Seller only")
+        raise HTTPException(
+            status_code=403,
+            detail="Seller only"
+        )
 
     merchant = db.query(Merchant).filter(
         Merchant.user_id == current_user.id
@@ -211,30 +222,89 @@ def get_seller_delivery_requests(
         return []
 
     results = (
-        db.query(DeliveryRequest, Order)
-        .join(Order, Order.id == DeliveryRequest.order_id)
-        .filter(DeliveryRequest.seller_id == merchant.id)
+        db.query(
+            DeliveryRequest,
+            Order,
+            DeliveryPartner,
+        )
+        .join(
+            Order,
+            Order.id == DeliveryRequest.order_id
+        )
+        .outerjoin(
+            DeliveryMatch,
+            DeliveryMatch.delivery_request_id
+            == DeliveryRequest.id
+        )
+        .outerjoin(
+            DeliveryPartner,
+            DeliveryPartner.id
+            == DeliveryMatch.delivery_partner_id
+        )
+        .filter(
+            DeliveryRequest.seller_id
+            == merchant.id
+        )
         .all()
     )
 
     responses = []
 
-    for delivery_request, order in results:
+    for (
+        delivery_request,
+        order,
+        driver,
+    ) in results:
+
         responses.append({
             "id": delivery_request.id,
-            "seller_id": delivery_request.seller_id,
-            "order_id": order.id,
-            "pickup_address": delivery_request.pickup_address,
-            "dropoff_address": delivery_request.dropoff_address,
-            "delivery_instructions": delivery_request.delivery_instructions,
-            "status": delivery_request.status,
-            "created_at": delivery_request.created_at,
-            "delivery_price": order.delivery_price,
-            "estimated_delivery_days": order.estimated_delivery_days,
-            "distance_km": order.distance_km
+
+            "seller_id":
+                delivery_request.seller_id,
+
+            "order_id":
+                order.id,
+
+            "pickup_address":
+                delivery_request.pickup_address,
+
+            "dropoff_address":
+                delivery_request.dropoff_address,
+
+            "delivery_instructions":
+                delivery_request.delivery_instructions,
+
+            "status":
+                delivery_request.status,
+
+            "created_at":
+                delivery_request.created_at,
+
+            "delivery_price":
+                order.delivery_price,
+
+            "estimated_delivery_days":
+                order.estimated_delivery_days,
+
+            "distance_km":
+                order.distance_km,
+
+            # Driver
+            "driver_name": (
+                driver.full_name
+                if driver
+                else None
+            ),
+
+            "driver_phone": (
+                driver.phone_number
+                if driver
+                else None
+            ),
         })
 
     return responses
+
 
 # ----------------------------------------
 # Delivery Partner: View Assigned Deliveries
@@ -256,8 +326,6 @@ def get_partner_deliveries(
             status_code=404,
             detail="Delivery partner profile not found"
         )
-
-    from sqlalchemy.orm import aliased
 
     SellerUser = aliased(User)
     BuyerUser = aliased(User)
@@ -323,6 +391,7 @@ def get_partner_deliveries(
 
     return deliveries
 
+
 # ----------------------------------------
 # Delivery Partner: Update Delivery Status
 # ----------------------------------------
@@ -372,6 +441,9 @@ def update_delivery_status(
             detail="Delivery request not found"
         )
 
+    # Get order for notifications
+    order = db.query(Order).filter(Order.id == delivery_request.order_id).first()
+
     # Allowed transitions
     transitions = {
         "assigned": ["accepted", "rejected"],
@@ -397,11 +469,50 @@ def update_delivery_status(
     # Update state
     delivery_request.status = new_status
 
-    # Auto-complete order when delivered
-    if new_status == "delivered":
-        order = db.query(Order).filter(Order.id == delivery_request.order_id).first()
-        if order:
-            order.status = "completed"
+    # 🔔 NOTIFICATIONS for status changes
+    if new_status == "picked_up" and order:
+        create_notification(
+            db=db,
+            user_id=order.buyer_id,
+            title="Package Picked Up",
+            message="Your package has been picked up and is on its way.",
+            notification_type="delivery",
+            related_id=order.id,
+        )
+
+    if new_status == "delivered" and order:
+        # Auto-complete order when delivered
+        order.status = "completed"
+
+        # Notify buyer
+        create_notification(
+            db=db,
+            user_id=order.buyer_id,
+            title="Order Delivered",
+            message="Your order has been delivered successfully.",
+            notification_type="delivery",
+            related_id=order.id,
+        )
+
+        # Notify seller
+        seller_user = db.query(User).filter(
+            User.id == order.buyer_id
+        ).first()  # Note: This should be the merchant's user_id, not buyer
+
+        # ✅ Fix: Get merchant and notify seller
+        merchant = db.query(Merchant).filter(
+            Merchant.id == order.merchant_id
+        ).first()
+
+        if merchant:
+            create_notification(
+                db=db,
+                user_id=merchant.user_id,
+                title="Order Completed",
+                message=f"Order #{order.id} has been completed.",
+                notification_type="delivery",
+                related_id=order.id,
+            )
 
     db.commit()
     db.refresh(delivery_request)
