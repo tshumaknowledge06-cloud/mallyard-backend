@@ -4,3 +4,4 @@ from . import users
 from . import merchant
 from . import category
 from . import subcategory
+from . import admin_broadcast

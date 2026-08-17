@@ -1,8 +1,13 @@
 import requests
+
 from app.core.config import settings
 
 
-def send_email(to: str, subject: str, body: str):
+def send_email(
+    to: str,
+    subject: str,
+    body: str,
+):
     try:
         response = requests.post(
             "https://api.resend.com/emails",
@@ -16,11 +21,27 @@ def send_email(to: str, subject: str, body: str):
                 "subject": subject,
                 "html": body,
             },
-            timeout=10
+            timeout=10,
         )
 
-        if response.status_code not in [200, 201]:
-            print("❌ Resend error:", response.text)
+        if response.status_code not in (200, 201):
+            print(
+                "❌ Resend error:",
+                response.status_code,
+                response.text,
+            )
 
-    except Exception as e:
-        print("❌ Email sending failed:", str(e))
+            raise RuntimeError(
+                f"Resend email failed: "
+                f"{response.status_code}"
+            )
+
+        return response.json()
+
+    except requests.RequestException as exc:
+        print(
+            "❌ Email sending failed:",
+            str(exc),
+        )
+
+        raise
