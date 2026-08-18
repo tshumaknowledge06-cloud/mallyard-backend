@@ -1,4 +1,51 @@
+import re
 from html import escape
+
+
+URL_PATTERN = re.compile(
+    r"https?://[^\s<]+",
+    re.IGNORECASE,
+)
+
+
+def linkify_message(message: str) -> str:
+    """
+    Escape admin-entered text while converting HTTP/HTTPS URLs
+    into safe clickable links.
+    """
+
+    escaped_message = escape(message)
+
+    def replace_url(match):
+        url = match.group(0)
+
+        # Remove common punctuation that may be typed directly
+        # after a URL, e.g. "https://themallyard.com."
+        trailing = ""
+
+        while url and url[-1] in ".,!?;:":
+            trailing = url[-1] + trailing
+            url = url[:-1]
+
+        safe_url = escape(url, quote=True)
+
+        return (
+            f'<a href="{safe_url}" '
+            f'target="_blank" '
+            f'style="'
+            f'color:#046D56;'
+            f'font-weight:700;'
+            f'text-decoration:none;'
+            f'">'
+            f'{safe_url}'
+            f'</a>'
+            f'{trailing}'
+        )
+
+    return URL_PATTERN.sub(
+        replace_url,
+        escaped_message,
+    ).replace("\n", "<br>")
 
 
 def build_broadcast_email(
@@ -7,7 +54,7 @@ def build_broadcast_email(
 ) -> str:
 
     safe_subject = escape(subject)
-    safe_message = escape(message).replace("\n", "<br>")
+    safe_message = linkify_message(message)
 
     return f"""
 <!DOCTYPE html>
