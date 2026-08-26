@@ -285,7 +285,7 @@ def forgot_password(
 
     # Send the reset email
     try:
-        reset_link = f"mallyard://reset-password?token={token}"
+        reset_link = f"https://themallyard.com/reset-password?token={token}"
         send_email(
             to=user.email,
             subject="Reset your Mallyard password",

@@ -90,7 +90,7 @@ color:#777;
 line-height:1.6;
 ">
 This link expires in
-<strong>30 minutes</strong>.
+<strong>1 hour</strong>.
 </p>
 
 <p style="
