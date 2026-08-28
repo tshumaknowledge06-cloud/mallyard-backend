@@ -110,7 +110,24 @@ Stay sharp. Stay winning.
         related_id=new_booking.id,
     )
 
-    return new_booking
+    # ✅ RETURN ENRICHED RESPONSE with all required fields
+    return {
+        "id": new_booking.id,
+        "listing_id": new_booking.listing_id,
+        "customer_id": new_booking.customer_id,
+        "seller_id": new_booking.seller_id,
+        "description": new_booking.description,
+        "contact_number": new_booking.contact_number,
+        "preferred_time": new_booking.preferred_time,
+        "status": new_booking.status,
+        "created_at": new_booking.created_at,
+        # 🔥 ENRICHED FIELDS from listing and merchant
+        "listing_name": listing.name,
+        "price": listing.price,
+        "currency": listing.currency,
+        "business_name": merchant.business_name,
+        "image_urls": listing.image_urls or [],
+    }
 
 
 # ---------------------------------------------------
