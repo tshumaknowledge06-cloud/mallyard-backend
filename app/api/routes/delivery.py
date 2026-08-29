@@ -11,7 +11,8 @@ from app.schemas.delivery_partner import (
     DeliveryPartnerOut
 )
 from app.api.deps import get_current_user
-from app.db.models.user import User
+from app.db.models.user import User, Role
+from app.db.models.user_role import UserRole
 from app.utils.file_upload import upload_file
 
 router = APIRouter(
@@ -43,13 +44,20 @@ def register_delivery_partner(
         full_name=payload.full_name,
         phone_number=payload.phone_number,
         hashed_password=get_password_hash(payload.password),
-        role="delivery_partner",
-        is_active=True
+        role=Role.delivery_partner,
+        is_active=True,
     )
 
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    db.flush()
+
+    # Add delivery-partner role to the multi-role system
+    user_role = UserRole(
+        user_id=user.id,
+        role=Role.delivery_partner,
+    )
+
+    db.add(user_role)
 
     partner = DeliveryPartner(
         user_id=user.id,
@@ -58,16 +66,19 @@ def register_delivery_partner(
         vehicle_type=payload.vehicle_type,
         license_number=payload.license_number,
         operating_city=payload.operating_city,
-        is_active=False
+        is_active=False,
     )
 
     db.add(partner)
+
     db.commit()
+
+    db.refresh(user)
     db.refresh(partner)
 
     return {
         "message": "Registration successful. Await admin approval.",
-        "partner_id": partner.id
+        "partner_id": partner.id,
     }
 
 

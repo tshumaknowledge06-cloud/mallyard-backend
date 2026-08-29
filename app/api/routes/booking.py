@@ -138,16 +138,14 @@ def get_bookings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-
     # ✅ CUSTOMER → bookings they made
     if current_user.role == "customer":
-        return db.query(Booking).filter(
+        bookings = db.query(Booking).filter(
             Booking.customer_id == current_user.id
         ).order_by(Booking.created_at.desc()).all()
 
-    # ✅ SELLER → bookings to their services (DO NOT TOUCH)
+    # ✅ SELLER → bookings to their services
     elif current_user.role == "seller":
-
         merchant = db.query(Merchant).filter(
             Merchant.user_id == current_user.id
         ).first()
@@ -155,24 +153,59 @@ def get_bookings(
         if not merchant:
             return []
 
-        return db.query(Booking).filter(
+        bookings = db.query(Booking).filter(
             Booking.seller_id == merchant.id
         ).order_by(Booking.created_at.desc()).all()
 
-    # ✅ DELIVERY PARTNER → bookings they made (NEW)
+    # ✅ DELIVERY PARTNER → bookings they made
     elif current_user.role == "delivery_partner":
-        return db.query(Booking).filter(
+        bookings = db.query(Booking).filter(
             Booking.customer_id == current_user.id
         ).order_by(Booking.created_at.desc()).all()
 
     # ✅ ADMIN
     elif current_user.role == "admin":
-        return db.query(Booking).order_by(
+        bookings = db.query(Booking).order_by(
             Booking.created_at.desc()
         ).all()
 
     else:
         raise HTTPException(status_code=403, detail="Unauthorized role")
+
+    # 🔥 ENRICH EACH BOOKING WITH LISTING AND MERCHANT DATA
+    result = []
+
+    for booking in bookings:
+        # Get the listing
+        listing = db.query(Listing).filter(
+            Listing.id == booking.listing_id
+        ).first()
+
+        # Get the merchant (seller)
+        merchant = db.query(Merchant).filter(
+            Merchant.id == booking.seller_id
+        ).first()
+
+        # Build enriched response
+        result.append({
+            "id": booking.id,
+            "listing_id": booking.listing_id,
+            "customer_id": booking.customer_id,
+            "seller_id": booking.seller_id,
+            "description": booking.description,
+            "contact_number": booking.contact_number,
+            "preferred_time": booking.preferred_time,
+            "status": booking.status,
+            "created_at": booking.created_at,
+            # 🔥 ENRICHED FIELDS from listing and merchant
+            "listing_name": listing.name if listing else f"Listing #{booking.listing_id}",
+            "image_urls": listing.image_urls if listing else [],
+            "price": listing.price if listing else 0.0,
+            "currency": listing.currency if listing else "USD",
+            "business_name": merchant.business_name if merchant else "Unknown Merchant",
+        })
+
+    return result
 
 
 # ---------------------------------------------------
